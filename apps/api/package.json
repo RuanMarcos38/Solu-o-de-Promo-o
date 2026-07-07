@@ -1,0 +1,31 @@
+{
+  "name": "@promo/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "latest",
+    "@prisma/client": "latest",
+    "bullmq": "latest",
+    "dotenv": "latest",
+    "fastify": "latest",
+    "ioredis": "latest",
+    "socket.io": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "prisma": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}
