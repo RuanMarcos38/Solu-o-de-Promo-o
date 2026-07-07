@@ -1,0 +1,31 @@
+{
+  "name": "solucao-de-promocao",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Radar de ofertas em tempo real com marketplace adapters, score de promoção e distribuição de oportunidades.",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/api & npm run dev -w apps/web",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/api && npm run build -w apps/web",
+    "start": "npm run start -w apps/api",
+    "db:generate": "npm run prisma:generate -w apps/api",
+    "db:migrate": "npm run prisma:migrate -w apps/api",
+    "lint": "npm run lint -w apps/api && npm run lint -w apps/web"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "ofertas",
+    "promocoes",
+    "marketplaces",
+    "afiliados",
+    "real-time"
+  ],
+  "license": "MIT"
+}
