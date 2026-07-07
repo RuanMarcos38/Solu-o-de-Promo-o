@@ -1,7 +1,8 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-COPY apps/*/package*.json apps/*/
+COPY apps/api/package*.json apps/api/
+COPY apps/web/package*.json apps/web/
 RUN npm install
 COPY . .
 RUN npm run build -w apps/web
