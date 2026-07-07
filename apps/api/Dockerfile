@@ -2,6 +2,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 COPY apps/api/package*.json apps/api/
+COPY apps/web/package*.json apps/web/
 RUN npm install
 
 FROM deps AS build
