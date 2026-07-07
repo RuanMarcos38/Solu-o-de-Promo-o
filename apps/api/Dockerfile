@@ -8,7 +8,6 @@ RUN npm install
 FROM deps AS build
 WORKDIR /app
 COPY . .
-RUN npm run db:generate
 RUN npm run build -w apps/api
 
 FROM node:20-alpine AS runner
