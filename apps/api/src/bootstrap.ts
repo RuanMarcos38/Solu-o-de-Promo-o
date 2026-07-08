@@ -5,11 +5,13 @@ import { runCollection } from './collector.js';
 import { getStats, listOffers } from './offerStore.js';
 import { enqueueCollectionJob } from './queue.js';
 import { emitNewOffers, emitStats, setRealtimeServer } from './realtime.js';
+import { registerMarketplaceEventBridge } from './marketplaceEvents.js';
 
 export async function createApp() {
   const app = Fastify({ logger: true });
   const io = new Server(app.server, { cors: { origin: true } });
   setRealtimeServer(io);
+  await registerMarketplaceEventBridge(io);
 
   await app.register(cors, { origin: true });
 
