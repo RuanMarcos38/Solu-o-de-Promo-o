@@ -13,11 +13,44 @@ type OfferForDispatch = {
   score: number;
 };
 
+type AlertForMatch = {
+  name: string;
+  keywords: string[];
+  marketplaces: string[];
+  minDiscountPercent: number;
+  maxPrice: unknown;
+};
+
+function normalize(value: string) {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
 function formatOfferMessage(offer: OfferForDispatch) {
   const price = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(offer.currentPrice);
   const discount = offer.discountPercent ? `\n🔥 Desconto: ${offer.discountPercent}% OFF` : '';
   const link = offer.affiliateUrl || offer.productUrl;
   return `🚨 Oferta encontrada!\n\n${offer.title}\n💰 ${price}${discount}\n⭐ Score: ${offer.score}\n🛒 ${link}`;
+}
+
+function offerMatchesAlert(offer: OfferForDispatch, alert: AlertForMatch) {
+  const title = normalize(offer.title);
+  const marketplace = normalize(offer.marketplace);
+  const alertMarketplaces = alert.marketplaces.map(normalize).filter(Boolean);
+  const alertKeywords = alert.keywords.map(normalize).filter(Boolean);
+  const discount = offer.discountPercent ?? 0;
+  const maxPrice = alert.maxPrice === null || alert.maxPrice === undefined ? null : Number(alert.maxPrice);
+
+  if (alertMarketplaces.length > 0 && !alertMarketplaces.includes(marketplace)) return false;
+  if (alertKeywords.length > 0 && !alertKeywords.some((keyword) => title.includes(keyword))) return false;
+  if (discount < alert.minDiscountPercent) return false;
+  if (maxPrice !== null && Number.isFinite(maxPrice) && offer.currentPrice > maxPrice) return false;
+  return true;
+}
+
+async function getMatchedAlerts(offer: OfferForDispatch) {
+  const alerts = await prisma.alertRule.findMany({ where: { isActive: true } });
+  if (alerts.length === 0) return [];
+  return alerts.filter((alert) => offerMatchesAlert(offer, alert));
 }
 
 async function sendTelegram(config: ChannelConfig, message: string) {
@@ -44,7 +77,28 @@ async function sendWebhook(config: ChannelConfig, payload: unknown) {
   if (!response.ok) throw new Error(`Webhook erro ${response.status}`);
 }
 
+async function sendEvolutionWhatsapp(config: ChannelConfig, message: string) {
+  const baseUrl = String(config.baseUrl || process.env.EVOLUTION_API_URL || '').replace(/\/$/, '');
+  const apiKey = config.apiKey || process.env.EVOLUTION_API_KEY;
+  const instanceName = config.instanceName || process.env.EVOLUTION_INSTANCE_NAME;
+  const number = config.number || config.to || process.env.WHATSAPP_DEFAULT_TO;
+  if (!baseUrl || !apiKey || !instanceName || !number) throw new Error('Evolution API sem baseUrl/apiKey/instanceName/number');
+
+  const response = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: String(apiKey) },
+    body: JSON.stringify({ number, text: message })
+  });
+
+  if (!response.ok) throw new Error(`Evolution API erro ${response.status}`);
+}
+
 async function sendWhatsapp(config: ChannelConfig, message: string, offer: OfferForDispatch) {
+  if (config.provider === 'evolution' || config.baseUrl || config.instanceName) {
+    await sendEvolutionWhatsapp(config, message);
+    return;
+  }
+
   const url = config.url || process.env.WHATSAPP_PROVIDER_URL;
   const token = config.token || process.env.WHATSAPP_PROVIDER_TOKEN;
   const to = config.to || process.env.WHATSAPP_DEFAULT_TO;
@@ -64,6 +118,21 @@ async function sendWhatsapp(config: ChannelConfig, message: string, offer: Offer
 
 export async function dispatchOffer(offer: OfferForDispatch) {
   const channels = await prisma.dispatchChannel.findMany({ where: { isActive: true } });
+  const activeAlerts = await prisma.alertRule.count({ where: { isActive: true } });
+  const matchedAlerts = await getMatchedAlerts(offer);
+
+  if (activeAlerts > 0 && matchedAlerts.length === 0) {
+    await prisma.dispatchLog.create({
+      data: {
+        offerId: offer.id,
+        channel: 'alert-filter',
+        status: DispatchStatus.SKIPPED,
+        payload: { reason: 'no_alert_match', marketplace: offer.marketplace, score: offer.score }
+      }
+    });
+    return;
+  }
+
   const message = formatOfferMessage(offer);
 
   for (const channel of channels) {
@@ -71,7 +140,8 @@ export async function dispatchOffer(offer: OfferForDispatch) {
       const config = channel.config as ChannelConfig;
       if (channel.type === 'telegram') await sendTelegram(config, message);
       else if (channel.type === 'whatsapp') await sendWhatsapp(config, message, offer);
-      else if (channel.type === 'webhook') await sendWebhook(config, { message, offer });
+      else if (channel.type === 'evolution') await sendEvolutionWhatsapp(config, message);
+      else if (channel.type === 'webhook') await sendWebhook(config, { message, offer, matchedAlerts: matchedAlerts.map((alert) => alert.name) });
       else throw new Error(`Canal não suportado: ${channel.type}`);
 
       await prisma.dispatchLog.create({
@@ -79,7 +149,7 @@ export async function dispatchOffer(offer: OfferForDispatch) {
           offerId: offer.id,
           channel: channel.name,
           status: DispatchStatus.SENT,
-          payload: { type: channel.type }
+          payload: { type: channel.type, matchedAlerts: matchedAlerts.map((alert) => alert.name) }
         }
       });
     } catch (error) {
