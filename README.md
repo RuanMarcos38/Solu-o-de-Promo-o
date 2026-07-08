@@ -17,7 +17,7 @@ A solução foi pensada para operar como um “radar de promoções”:
 7. Enfileira coletas recorrentes com Redis + BullMQ.
 8. Permite criar alertas por categoria, palavra-chave, desconto mínimo e preço máximo.
 9. Permite administrar fontes, alertas, usuários e canais pelo painel.
-10. Distribui ofertas automaticamente para Telegram, WhatsApp genérico ou Webhook.
+10. Distribui ofertas automaticamente para Telegram, WhatsApp genérico, Evolution API ou Webhook.
 
 ## Stack Técnica
 
@@ -186,7 +186,7 @@ O frontend permite:
 - ativar/desativar fontes;
 - criação de alertas;
 - ativar/desativar alertas;
-- criação de canais Webhook, Telegram e WhatsApp;
+- criação de canais Webhook, Telegram, WhatsApp genérico e Evolution API;
 - ativar/desativar canais;
 - criação e bloqueio de usuários;
 - visualização de logs de distribuição;
@@ -217,16 +217,25 @@ A persistência usa Prisma + PostgreSQL com as entidades:
 
 ## Distribuição de ofertas
 
+A distribuição respeita alertas ativos. Se não houver alerta ativo, as ofertas aprovadas são enviadas normalmente. Se houver alertas ativos, a oferta só é enviada quando combina com marketplace, palavras-chave, desconto mínimo e preço máximo.
+
 Canais suportados:
 
-- `telegram`: usa `botToken` e `chatId` no config do canal ou `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHANNEL_ID` no `.env`.
-- `whatsapp`: usa provider HTTP genérico com `url`, `token` e `to`, ou variáveis `WHATSAPP_PROVIDER_URL`, `WHATSAPP_PROVIDER_TOKEN`, `WHATSAPP_DEFAULT_TO`.
-- `webhook`: envia `{ message, offer }` para a URL configurada.
+- `telegram`: usa `botToken` e `chatId` no config do canal ou variáveis de ambiente.
+- `whatsapp`: usa provider HTTP genérico com `url`, `token` e `to`.
+- `evolution`: usa Evolution API com `baseUrl`, `apiKey`, `instanceName` e `number`.
+- `webhook`: envia `{ message, offer, matchedAlerts }` para a URL configurada.
 
 Exemplo de config Webhook no painel:
 
 ```json
 {"url":"https://seu-webhook.com/ofertas"}
+```
+
+Exemplo de config Evolution API:
+
+```json
+{"baseUrl":"https://evolution.seudominio.com","apiKey":"SUA_API_KEY","instanceName":"minha-instancia","number":"5547999999999"}
 ```
 
 ## Regras de qualidade das ofertas
@@ -258,7 +267,8 @@ Veja `.env.example` para configurar:
 - tags de afiliado;
 - limites de coleta;
 - desconto mínimo e score mínimo;
-- canais Telegram/WhatsApp.
+- canais Telegram/WhatsApp;
+- Evolution API.
 
 ## Próximos passos de produção
 
@@ -266,9 +276,10 @@ Veja `.env.example` para configurar:
 2. Preencher `.env` com as credenciais reais.
 3. Configurar domínio e SSL.
 4. Criar novas fontes pelo painel.
-5. Criar canais de distribuição.
-6. Definir política comercial de categorias, margem e frequência de postagem.
-7. Acompanhar logs de envio e métricas de ofertas no painel.
+5. Criar alertas de distribuição.
+6. Criar canais Webhook, Telegram, WhatsApp ou Evolution API.
+7. Definir política comercial de categorias, margem e frequência de postagem.
+8. Acompanhar logs de envio e métricas de ofertas no painel.
 
 ## Importante
 
