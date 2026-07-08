@@ -259,7 +259,10 @@ Uma oferta só entra no feed quando passa por critérios mínimos:
 
 ## Deploy em produção
 
-Veja o guia completo em `docs/DEPLOY_PRODUCTION.md`.
+Veja os guias:
+
+- `docs/DEPLOY_PRODUCTION.md` — guia geral de produção.
+- `docs/EASYPANEL_DEPLOY.md` — passo a passo para EasyPanel.
 
 ## Variáveis importantes
 
@@ -279,7 +282,7 @@ Veja `.env.example` para configurar:
 ## Próximos passos de produção
 
 1. Criar contas oficiais de afiliado/API nos marketplaces.
-2. Preencher `.env` com as credenciais reais.
+2. Preencher variáveis reais no EasyPanel Environment Variables.
 3. Configurar domínio e SSL.
 4. Criar novas fontes pelo painel.
 5. Criar alertas de distribuição.
