@@ -1,12 +1,14 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
+import { UserRole } from '@prisma/client';
 import { Server } from 'socket.io';
-import { ensureAdminUser, login, requireAdmin, requireAuth } from './auth.js';
+import { ensureAdminUser, hashPassword, login, requireAdmin, requireAuth, safeUser } from './auth.js';
 import { runCollection } from './collector.js';
 import { getOfferHistory, getStats, listOffers } from './offerStore.js';
 import { dispatchOffer } from './dispatch.js';
 import { prisma } from './db.js';
-import { enqueueCollectionJob } from './queue.js';
+import { connection, enqueueCollectionJob } from './queue.js';
 import { emitNewOffers, emitStats, setRealtimeServer } from './realtime.js';
 import { registerMarketplaceEventBridge } from './marketplaceEvents.js';
 import { toMarketplaceEnum, toMarketplaceName } from './marketplace.js';
@@ -30,6 +32,19 @@ function parseQuery(query: any) {
   };
 }
 
+function parseKeywords(value: unknown) {
+  if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
+function parseUserRole(value: unknown) {
+  const role = String(value ?? 'VIEWER').toUpperCase();
+  if (role === 'ADMIN') return UserRole.ADMIN;
+  if (role === 'EDITOR') return UserRole.EDITOR;
+  return UserRole.VIEWER;
+}
+
 export async function createApp() {
   const app = Fastify({ logger: true });
   const io = new Server(app.server, { cors: { origin: true } });
@@ -39,8 +54,22 @@ export async function createApp() {
   await ensureDefaultSources();
 
   await app.register(cors, { origin: true });
+  await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
 
   app.get('/health', async () => ({ status: 'ok', service: 'promotion-radar-api' }));
+
+  app.get('/ready', async (request, reply) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      await connection.ping();
+      return { status: 'ready', database: 'ok', redis: 'ok' };
+    } catch (error) {
+      return reply.status(503).send({
+        status: 'not_ready',
+        error: error instanceof Error ? error.message : 'Erro desconhecido'
+      });
+    }
+  });
 
   app.post('/auth/login', async (request, reply) => {
     const body = request.body as any;
@@ -73,6 +102,47 @@ export async function createApp() {
     return { status: 'queued', jobId: job.id };
   });
 
+  app.get('/admin/users', async (request) => {
+    requireAdmin(request);
+    const users = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+    return { users: users.map(safeUser) };
+  });
+
+  app.post('/admin/users', async (request) => {
+    requireAdmin(request);
+    const body = request.body as any;
+    const password = String(body.password ?? '').trim();
+    if (password.length < 8) throw Object.assign(new Error('Senha precisa ter pelo menos 8 caracteres'), { statusCode: 400 });
+
+    const user = await prisma.user.create({
+      data: {
+        name: String(body.name ?? '').trim(),
+        email: String(body.email ?? '').trim().toLowerCase(),
+        passwordHash: await hashPassword(password),
+        role: parseUserRole(body.role),
+        isActive: body.isActive ?? true
+      }
+    });
+    return { user: safeUser(user) };
+  });
+
+  app.put('/admin/users/:id', async (request) => {
+    requireAdmin(request);
+    const params = request.params as any;
+    const body = request.body as any;
+    const user = await prisma.user.update({
+      where: { id: params.id },
+      data: {
+        ...(body.name !== undefined ? { name: String(body.name) } : {}),
+        ...(body.email !== undefined ? { email: String(body.email).toLowerCase() } : {}),
+        ...(body.role !== undefined ? { role: parseUserRole(body.role) } : {}),
+        ...(body.isActive !== undefined ? { isActive: Boolean(body.isActive) } : {}),
+        ...(body.password !== undefined && String(body.password).length >= 8 ? { passwordHash: await hashPassword(String(body.password)) } : {})
+      }
+    });
+    return { user: safeUser(user) };
+  });
+
   app.get('/admin/sources', async (request) => {
     requireAuth(request);
     return { sources: await prisma.marketplaceSource.findMany({ orderBy: { createdAt: 'desc' } }) };
@@ -85,10 +155,10 @@ export async function createApp() {
     if (!marketplace) throw Object.assign(new Error('Marketplace inválido'), { statusCode: 400 });
     const source = await prisma.marketplaceSource.create({
       data: {
-        name: body.name,
+        name: String(body.name ?? `${marketplace} source`),
         marketplace,
         isActive: body.isActive ?? true,
-        keywords: body.keywords ?? [],
+        keywords: parseKeywords(body.keywords),
         config: body.config ?? {}
       }
     });
@@ -106,7 +176,7 @@ export async function createApp() {
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(marketplace ? { marketplace } : {}),
         ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
-        ...(body.keywords !== undefined ? { keywords: body.keywords } : {}),
+        ...(body.keywords !== undefined ? { keywords: parseKeywords(body.keywords) } : {}),
         ...(body.config !== undefined ? { config: body.config } : {})
       }
     });
@@ -130,9 +200,9 @@ export async function createApp() {
     const body = request.body as any;
     const alert = await prisma.alertRule.create({
       data: {
-        name: body.name,
-        keywords: body.keywords ?? [],
-        marketplaces: body.marketplaces ?? [],
+        name: String(body.name ?? 'Alerta'),
+        keywords: parseKeywords(body.keywords),
+        marketplaces: parseKeywords(body.marketplaces),
         minDiscountPercent: Number(body.minDiscountPercent ?? 10),
         maxPrice: body.maxPrice ?? null,
         isActive: body.isActive ?? true
@@ -149,8 +219,8 @@ export async function createApp() {
       where: { id: params.id },
       data: {
         ...(body.name !== undefined ? { name: body.name } : {}),
-        ...(body.keywords !== undefined ? { keywords: body.keywords } : {}),
-        ...(body.marketplaces !== undefined ? { marketplaces: body.marketplaces } : {}),
+        ...(body.keywords !== undefined ? { keywords: parseKeywords(body.keywords) } : {}),
+        ...(body.marketplaces !== undefined ? { marketplaces: parseKeywords(body.marketplaces) } : {}),
         ...(body.minDiscountPercent !== undefined ? { minDiscountPercent: Number(body.minDiscountPercent) } : {}),
         ...(body.maxPrice !== undefined ? { maxPrice: body.maxPrice } : {}),
         ...(body.isActive !== undefined ? { isActive: body.isActive } : {})
@@ -175,7 +245,7 @@ export async function createApp() {
     requireAdmin(request);
     const body = request.body as any;
     const channel = await prisma.dispatchChannel.create({
-      data: { name: body.name, type: body.type, config: body.config ?? {}, isActive: body.isActive ?? true }
+      data: { name: String(body.name ?? 'Canal'), type: String(body.type ?? 'webhook'), config: body.config ?? {}, isActive: body.isActive ?? true }
     });
     return { channel };
   });
@@ -201,6 +271,17 @@ export async function createApp() {
     const params = request.params as any;
     const channel = await prisma.dispatchChannel.update({ where: { id: params.id }, data: { isActive: false } });
     return { channel };
+  });
+
+  app.get('/dispatch/logs', async (request) => {
+    requireAuth(request);
+    const query = request.query as any;
+    const logs = await prisma.dispatchLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(Number(query.limit ?? 50), 1), 200),
+      include: { offer: { select: { title: true, marketplace: true, currentPrice: true, productUrl: true } } }
+    });
+    return { logs: logs.map((log) => ({ ...log, offer: log.offer ? { ...log.offer, currentPrice: Number(log.offer.currentPrice) } : null })) };
   });
 
   app.post('/dispatch/test/:offerId', async (request) => {
