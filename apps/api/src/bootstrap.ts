@@ -10,6 +10,7 @@ import { enqueueCollectionJob } from './queue.js';
 import { emitNewOffers, emitStats, setRealtimeServer } from './realtime.js';
 import { registerMarketplaceEventBridge } from './marketplaceEvents.js';
 import { toMarketplaceEnum, toMarketplaceName } from './marketplace.js';
+import { ensureDefaultSources } from './sources.js';
 
 function asNumber(value: unknown) {
   if (value === undefined || value === null || value === '') return undefined;
@@ -35,6 +36,7 @@ export async function createApp() {
   setRealtimeServer(io);
   await registerMarketplaceEventBridge(io);
   await ensureAdminUser();
+  await ensureDefaultSources();
 
   await app.register(cors, { origin: true });
 
@@ -143,7 +145,17 @@ export async function createApp() {
     requireAuth(request);
     const params = request.params as any;
     const body = request.body as any;
-    const alert = await prisma.alertRule.update({ where: { id: params.id }, data: body });
+    const alert = await prisma.alertRule.update({
+      where: { id: params.id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.keywords !== undefined ? { keywords: body.keywords } : {}),
+        ...(body.marketplaces !== undefined ? { marketplaces: body.marketplaces } : {}),
+        ...(body.minDiscountPercent !== undefined ? { minDiscountPercent: Number(body.minDiscountPercent) } : {}),
+        ...(body.maxPrice !== undefined ? { maxPrice: body.maxPrice } : {}),
+        ...(body.isActive !== undefined ? { isActive: body.isActive } : {})
+      }
+    });
     return { alert };
   });
 
@@ -172,7 +184,15 @@ export async function createApp() {
     requireAdmin(request);
     const params = request.params as any;
     const body = request.body as any;
-    const channel = await prisma.dispatchChannel.update({ where: { id: params.id }, data: body });
+    const channel = await prisma.dispatchChannel.update({
+      where: { id: params.id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.type !== undefined ? { type: body.type } : {}),
+        ...(body.config !== undefined ? { config: body.config } : {}),
+        ...(body.isActive !== undefined ? { isActive: body.isActive } : {})
+      }
+    });
     return { channel };
   });
 
