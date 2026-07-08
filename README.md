@@ -12,16 +12,18 @@ A solução foi pensada para operar como um “radar de promoções”:
 2. Normaliza título, preço, imagem, marketplace, categoria, frete, seller e URL de afiliado.
 3. Calcula desconto real e score de oportunidade.
 4. Remove ofertas duplicadas ou fracas.
-5. Publica as melhores ofertas no painel em tempo real.
-6. Permite criar alertas por categoria, palavra-chave, desconto mínimo e preço máximo.
-7. Prepara distribuição para grupos, listas e canais comerciais.
+5. Salva ofertas e histórico de preço no PostgreSQL.
+6. Publica as melhores ofertas no painel em tempo real via Socket.IO.
+7. Enfileira coletas recorrentes com Redis + BullMQ.
+8. Permite criar alertas por categoria, palavra-chave, desconto mínimo e preço máximo.
+9. Prepara distribuição para grupos, listas e canais comerciais.
 
 ## Stack Técnica
 
 - **Backend:** Node.js, TypeScript, Fastify, Socket.IO, Prisma, PostgreSQL, Redis, BullMQ.
 - **Frontend:** React, Vite, TypeScript, Socket.IO Client.
-- **Banco:** PostgreSQL com Prisma ORM.
-- **Fila e tempo real:** Redis + BullMQ + WebSocket.
+- **Banco:** PostgreSQL com Prisma ORM e histórico de preço.
+- **Fila e tempo real:** Redis + BullMQ + Redis Pub/Sub + WebSocket.
 - **Deploy:** Docker Compose, pronto para VPS, EasyPanel, Coolify, Render ou Railway.
 
 ## Integrações previstas
@@ -38,7 +40,7 @@ A arquitetura usa adaptadores por marketplace. Cada adaptador precisa respeitar 
 ```txt
 .
 ├── apps
-│   ├── api          # API, jobs, conectores e websocket
+│   ├── api          # API, worker, Prisma, conectores e websocket
 │   └── web          # painel em tempo real
 ├── docs             # arquitetura e regras de negócio
 ├── docker-compose.yml
@@ -48,17 +50,27 @@ A arquitetura usa adaptadores por marketplace. Cada adaptador precisa respeitar 
 
 ## Como rodar localmente
 
+Suba banco e Redis:
+
+```bash
+docker compose up -d postgres redis
+```
+
+Instale e prepare o projeto:
+
 ```bash
 cp .env.example .env
 npm install
 npm run db:generate
-npm run dev
+npm run db:migrate
 ```
 
-Subir banco e Redis:
+Rodar API, worker e frontend em terminais separados:
 
 ```bash
-docker compose up -d postgres redis
+npm run dev:api
+npm run dev:worker
+npm run dev:web
 ```
 
 Rodar tudo com Docker:
@@ -80,17 +92,30 @@ GET /health
 GET /offers
 GET /offers/stats
 POST /collect/run
+POST /collect/enqueue
 POST /alerts
 GET /alerts
 ```
 
 ## Tempo real
 
-O backend emite eventos WebSocket:
+O backend emite eventos Socket.IO:
 
+- `offers:init` — lista inicial de ofertas ao conectar.
 - `offer:new` — nova oferta aprovada.
-- `offer:update` — oferta atualizada.
 - `stats:update` — atualização de métricas.
+
+O worker publica o resultado da coleta no Redis Pub/Sub e a API retransmite para o frontend via Socket.IO.
+
+## Banco de dados
+
+A persistência usa Prisma + PostgreSQL com as entidades:
+
+- `Offer` — oferta normalizada e aprovada.
+- `PriceHistory` — histórico de preço por captura.
+- `AlertRule` — regras de alerta.
+- `DispatchChannel` — canais de distribuição.
+- `DispatchLog` — logs de envio.
 
 ## Regras de qualidade das ofertas
 
@@ -122,9 +147,10 @@ Veja `.env.example` para configurar:
 1. Criar contas oficiais de afiliado/API nos marketplaces.
 2. Preencher `.env` com as credenciais.
 3. Configurar domínio e SSL.
-4. Ativar workers em processo separado para alta escala.
+4. Ativar autenticação e multiusuário.
 5. Criar política comercial de categorias, margem e frequência de postagem.
 6. Conectar WhatsApp/Telegram para distribuição automática.
+7. Adicionar observabilidade com logs estruturados, métricas e alertas.
 
 ## Importante
 
