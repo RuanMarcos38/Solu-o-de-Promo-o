@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import type { FastifyRequest } from 'fastify';
 import { UserRole } from '@prisma/client';
 import { config } from './config.js';
@@ -42,7 +42,8 @@ export async function login(email: string, password: string) {
     role: user.role
   };
 
-  const token = jwt.sign(safeUser, config.jwtSecret, { expiresIn: config.jwtExpiresIn as jwt.SignOptions['expiresIn'] });
+  const options: SignOptions = { expiresIn: config.jwtExpiresIn as SignOptions['expiresIn'] };
+  const token = jwt.sign(safeUser, config.jwtSecret, options);
   return { user: safeUser, token };
 }
 
