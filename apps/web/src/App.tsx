@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 
 type Offer = {
@@ -41,8 +41,6 @@ export function App() {
   const [alerts, setAlerts] = useState<AlertRule[]>([]);
   const [channels, setChannels] = useState<DispatchChannel[]>([]);
   const [channelConfig, setChannelConfig] = useState('{"url":"https://seu-webhook.com/ofertas"}');
-
-  const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
   async function apiFetch(path: string, options: RequestInit = {}) {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> | undefined) };
@@ -148,7 +146,9 @@ export function App() {
       });
     });
     socket.on('stats:update', (nextStats: Stats) => setStats(nextStats));
-    return () => socket.disconnect();
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   useEffect(() => { loadAdminData(); }, [token]);
