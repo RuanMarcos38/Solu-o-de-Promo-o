@@ -17,7 +17,7 @@ export async function registerMarketplaceEventBridge(io: Server) {
   const subscriber = connection.duplicate();
   await subscriber.subscribe(CHANNEL);
 
-  subscriber.on('message', (_channel, message) => {
+  subscriber.on('message', (_channel: string, message: string) => {
     try {
       const event = JSON.parse(message) as PromotionEvent;
       if (event.type !== 'collection.completed') return;
