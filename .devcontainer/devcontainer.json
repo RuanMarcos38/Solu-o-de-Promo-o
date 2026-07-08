@@ -1,0 +1,17 @@
+{
+  "name": "Solução de Promoção",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "cp .env.example .env || true && npm install && npm run db:generate",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Prisma.prisma",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}
