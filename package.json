@@ -17,7 +17,9 @@
     "start:worker": "npm run start:worker -w apps/api",
     "db:generate": "npm run prisma:generate -w apps/api",
     "db:migrate": "npm run prisma:migrate -w apps/api",
-    "lint": "npm run lint -w apps/api && npm run lint -w apps/web"
+    "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
+    "verify": "npm run db:generate && npm run lint && npm run build",
+    "docker:build": "docker compose build api worker web"
   },
   "engines": {
     "node": ">=20.0.0"
