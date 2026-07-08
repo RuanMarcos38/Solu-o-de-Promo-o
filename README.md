@@ -16,11 +16,12 @@ A solução foi pensada para operar como um “radar de promoções”:
 6. Publica as melhores ofertas no painel em tempo real via Socket.IO.
 7. Enfileira coletas recorrentes com Redis + BullMQ.
 8. Permite criar alertas por categoria, palavra-chave, desconto mínimo e preço máximo.
-9. Prepara distribuição para grupos, listas e canais comerciais.
+9. Permite administrar fontes, alertas e canais pelo painel.
+10. Distribui ofertas automaticamente para Telegram, WhatsApp genérico ou Webhook.
 
 ## Stack Técnica
 
-- **Backend:** Node.js, TypeScript, Fastify, Socket.IO, Prisma, PostgreSQL, Redis, BullMQ.
+- **Backend:** Node.js, TypeScript, Fastify, Socket.IO, Prisma, PostgreSQL, Redis, BullMQ, JWT.
 - **Frontend:** React, Vite, TypeScript, Socket.IO Client.
 - **Banco:** PostgreSQL com Prisma ORM e histórico de preço.
 - **Fila e tempo real:** Redis + BullMQ + Redis Pub/Sub + WebSocket.
@@ -79,22 +80,42 @@ Rodar tudo com Docker:
 docker compose up --build
 ```
 
-Acessos padrão:
+O Docker Compose executa o serviço `migrate` antes de subir API e worker, então o banco recebe as migrations automaticamente.
+
+## Acessos padrão
 
 - API: `http://localhost:3333`
 - Frontend: `http://localhost:5173`
 - Healthcheck: `http://localhost:3333/health`
+- Login inicial: `ADMIN_EMAIL` e `ADMIN_PASSWORD` configurados no `.env`.
+- Padrão local do `.env.example`: `admin@promoradar.local` / `admin123456`.
+
+Troque `JWT_SECRET`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` antes de publicar em produção.
 
 ## Endpoints principais
 
 ```http
+POST /auth/login
+GET /auth/me
 GET /health
 GET /offers
 GET /offers/stats
+GET /offers/:id/history
 POST /collect/run
 POST /collect/enqueue
-POST /alerts
+GET /admin/sources
+POST /admin/sources
+PUT /admin/sources/:id
+DELETE /admin/sources/:id
 GET /alerts
+POST /alerts
+PUT /alerts/:id
+DELETE /alerts/:id
+GET /dispatch/channels
+POST /dispatch/channels
+PUT /dispatch/channels/:id
+DELETE /dispatch/channels/:id
+POST /dispatch/test/:offerId
 ```
 
 ## Tempo real
@@ -111,11 +132,27 @@ O worker publica o resultado da coleta no Redis Pub/Sub e a API retransmite para
 
 A persistência usa Prisma + PostgreSQL com as entidades:
 
+- `User` — login administrativo com JWT.
+- `MarketplaceSource` — fontes configuráveis de coleta.
 - `Offer` — oferta normalizada e aprovada.
 - `PriceHistory` — histórico de preço por captura.
 - `AlertRule` — regras de alerta.
 - `DispatchChannel` — canais de distribuição.
 - `DispatchLog` — logs de envio.
+
+## Distribuição de ofertas
+
+Canais suportados:
+
+- `telegram`: usa `botToken` e `chatId` no config do canal ou `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHANNEL_ID` no `.env`.
+- `whatsapp`: usa provider HTTP genérico com `url`, `token` e `to`, ou variáveis `WHATSAPP_PROVIDER_URL`, `WHATSAPP_PROVIDER_TOKEN`, `WHATSAPP_DEFAULT_TO`.
+- `webhook`: envia `{ message, offer }` para a URL configurada.
+
+Exemplo de config Webhook no painel:
+
+```json
+{"url":"https://seu-webhook.com/ofertas"}
+```
 
 ## Regras de qualidade das ofertas
 
@@ -128,7 +165,7 @@ Uma oferta só entra no feed quando passa por critérios mínimos:
 - desconto mínimo configurável;
 - score mínimo configurável;
 - bloqueio de produtos duplicados;
-- comparação com histórico de preço quando existir.
+- publicação somente quando a oferta é nova, muda preço ou melhora score.
 
 ## Variáveis importantes
 
@@ -136,20 +173,22 @@ Veja `.env.example` para configurar:
 
 - banco PostgreSQL;
 - Redis;
-- URL do frontend;
+- URL pública da API para o frontend;
+- JWT e usuário admin;
 - chaves Amazon/Shopee;
 - tags de afiliado;
 - limites de coleta;
-- desconto mínimo e score mínimo.
+- desconto mínimo e score mínimo;
+- canais Telegram/WhatsApp.
 
 ## Próximos passos de produção
 
 1. Criar contas oficiais de afiliado/API nos marketplaces.
-2. Preencher `.env` com as credenciais.
+2. Preencher `.env` com as credenciais reais.
 3. Configurar domínio e SSL.
-4. Ativar autenticação e multiusuário.
-5. Criar política comercial de categorias, margem e frequência de postagem.
-6. Conectar WhatsApp/Telegram para distribuição automática.
+4. Criar novas fontes pelo painel.
+5. Criar canais de distribuição.
+6. Definir política comercial de categorias, margem e frequência de postagem.
 7. Adicionar observabilidade com logs estruturados, métricas e alertas.
 
 ## Importante
