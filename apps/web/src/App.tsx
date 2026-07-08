@@ -23,6 +23,8 @@ type Stats = {
 type Source = { id: string; name: string; marketplace: string; isActive: boolean; keywords: string[] };
 type AlertRule = { id: string; name: string; isActive: boolean; keywords: string[]; minDiscountPercent: number };
 type DispatchChannel = { id: string; name: string; type: string; isActive: boolean };
+type User = { id: string; name: string; email: string; role: string; isActive: boolean };
+type DispatchLog = { id: string; channel: string; status: string; error?: string; createdAt: string; offer?: { title: string; marketplace: string; currentPrice: number } | null };
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3333';
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -40,16 +42,29 @@ export function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [alerts, setAlerts] = useState<AlertRule[]>([]);
   const [channels, setChannels] = useState<DispatchChannel[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [logs, setLogs] = useState<DispatchLog[]>([]);
   const [channelConfig, setChannelConfig] = useState('{"url":"https://seu-webhook.com/ofertas"}');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState('VIEWER');
+  const [statusMessage, setStatusMessage] = useState('');
 
   async function apiFetch(path: string, options: RequestInit = {}) {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> | undefined) };
     if (token) headers.Authorization = `Bearer ${token}`;
-    return fetch(`${apiUrl}${path}`, { ...options, headers });
+    const response = await fetch(`${apiUrl}${path}`, { ...options, headers });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Erro HTTP ${response.status}`);
+    }
+    return response;
   }
 
   async function loginNow() {
     setLoading(true);
+    setStatusMessage('');
     try {
       const response = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
@@ -60,6 +75,9 @@ export function App() {
       const data = await response.json();
       localStorage.setItem('promo_token', data.token);
       setToken(data.token);
+      setStatusMessage('Login realizado com sucesso.');
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Erro ao entrar.');
     } finally {
       setLoading(false);
     }
@@ -87,23 +105,28 @@ export function App() {
 
   async function loadAdminData() {
     if (!token) return;
-    const [sourcesResponse, alertsResponse, channelsResponse] = await Promise.all([
+    const [sourcesResponse, alertsResponse, channelsResponse, usersResponse, logsResponse] = await Promise.all([
       apiFetch('/admin/sources'),
       apiFetch('/alerts'),
-      apiFetch('/dispatch/channels')
+      apiFetch('/dispatch/channels'),
+      apiFetch('/admin/users'),
+      apiFetch('/dispatch/logs?limit=20')
     ]);
-    if (sourcesResponse.ok) setSources((await sourcesResponse.json()).sources ?? []);
-    if (alertsResponse.ok) setAlerts((await alertsResponse.json()).alerts ?? []);
-    if (channelsResponse.ok) setChannels((await channelsResponse.json()).channels ?? []);
+    setSources((await sourcesResponse.json()).sources ?? []);
+    setAlerts((await alertsResponse.json()).alerts ?? []);
+    setChannels((await channelsResponse.json()).channels ?? []);
+    setUsers((await usersResponse.json()).users ?? []);
+    setLogs((await logsResponse.json()).logs ?? []);
   }
 
   async function collectNow() {
     setLoading(true);
+    setStatusMessage('');
     try {
-      await apiFetch('/collect/enqueue', {
-        method: 'POST',
-        body: JSON.stringify({ keyword, marketplace })
-      });
+      await apiFetch('/collect/enqueue', { method: 'POST', body: JSON.stringify({ keyword, marketplace }) });
+      setStatusMessage('Coleta enviada para a fila.');
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Erro ao enfileirar coleta.');
     } finally {
       setLoading(false);
     }
@@ -114,6 +137,12 @@ export function App() {
       method: 'POST',
       body: JSON.stringify({ name: `Fonte ${marketplace}`, marketplace, keywords: keyword.split(',').map((item) => item.trim()).filter(Boolean) })
     });
+    setStatusMessage('Fonte criada.');
+    await loadAdminData();
+  }
+
+  async function toggleSource(source: Source) {
+    await apiFetch(`/admin/sources/${source.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !source.isActive }) });
     await loadAdminData();
   }
 
@@ -122,6 +151,12 @@ export function App() {
       method: 'POST',
       body: JSON.stringify({ name: `Alerta ${keyword}`, keywords: keyword.split(',').map((item) => item.trim()).filter(Boolean), marketplaces: [marketplace], minDiscountPercent: Number(minDiscount || 10) })
     });
+    setStatusMessage('Alerta criado.');
+    await loadAdminData();
+  }
+
+  async function toggleAlert(alert: AlertRule) {
+    await apiFetch(`/alerts/${alert.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !alert.isActive }) });
     await loadAdminData();
   }
 
@@ -132,6 +167,29 @@ export function App() {
       method: 'POST',
       body: JSON.stringify({ name: `Canal ${type}`, type, config: parsedConfig })
     });
+    setStatusMessage(`Canal ${type} criado.`);
+    await loadAdminData();
+  }
+
+  async function toggleChannel(channel: DispatchChannel) {
+    await apiFetch(`/dispatch/channels/${channel.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !channel.isActive }) });
+    await loadAdminData();
+  }
+
+  async function createUser() {
+    await apiFetch('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ name: newUserName, email: newUserEmail, password: newUserPassword, role: newUserRole })
+    });
+    setNewUserEmail('');
+    setNewUserName('');
+    setNewUserPassword('');
+    setStatusMessage('Usuário criado.');
+    await loadAdminData();
+  }
+
+  async function toggleUser(user: User) {
+    await apiFetch(`/admin/users/${user.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !user.isActive }) });
     await loadAdminData();
   }
 
@@ -151,7 +209,7 @@ export function App() {
     };
   }, []);
 
-  useEffect(() => { loadAdminData(); }, [token]);
+  useEffect(() => { loadAdminData().catch(() => undefined); }, [token]);
 
   if (!token) {
     return (
@@ -159,10 +217,11 @@ export function App() {
         <section className="hero auth-card">
           <span className="badge">Acesso administrativo</span>
           <h1>Solução de Promoção</h1>
-          <p>Entre para administrar fontes, alertas, canais de distribuição e varreduras em tempo real.</p>
+          <p>Entre para administrar fontes, alertas, usuários, canais de distribuição e varreduras em tempo real.</p>
           <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="E-mail" />
           <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Senha" type="password" />
           <button onClick={loginNow} disabled={loading}>{loading ? 'Entrando...' : 'Entrar no painel'}</button>
+          {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
         </section>
       </main>
     );
@@ -185,6 +244,7 @@ export function App() {
           <button onClick={loadData}>Filtrar</button>
           <button onClick={collectNow} disabled={loading}>{loading ? 'Enfileirando...' : 'Varrer agora'}</button>
         </div>
+        {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
       </section>
 
       <section className="stats-grid">
@@ -197,18 +257,35 @@ export function App() {
         <article>
           <h3>Fontes</h3>
           <button onClick={createSource}>Criar fonte da busca atual</button>
-          {sources.slice(0, 5).map((source) => <p key={source.id}>{source.name} • {source.marketplace} • {source.isActive ? 'Ativa' : 'Inativa'}</p>)}
+          <div className="compact-list">{sources.slice(0, 8).map((source) => <div className="compact-row" key={source.id}><span>{source.name}<small>{source.marketplace} • {source.keywords.join(', ')}</small></span><button onClick={() => toggleSource(source)}>{source.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
         </article>
         <article>
           <h3>Alertas</h3>
           <button onClick={createAlert}>Criar alerta da busca atual</button>
-          {alerts.slice(0, 5).map((alert) => <p key={alert.id}>{alert.name} • {alert.minDiscountPercent}% OFF</p>)}
+          <div className="compact-list">{alerts.slice(0, 8).map((alert) => <div className="compact-row" key={alert.id}><span>{alert.name}<small>{alert.minDiscountPercent}% OFF • {alert.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleAlert(alert)}>{alert.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
         </article>
         <article>
           <h3>Distribuição</h3>
           <textarea value={channelConfig} onChange={(event) => setChannelConfig(event.target.value)} />
           <div className="mini-actions"><button onClick={() => createChannel('webhook')}>Webhook</button><button onClick={() => createChannel('telegram')}>Telegram</button><button onClick={() => createChannel('whatsapp')}>WhatsApp</button></div>
-          {channels.slice(0, 5).map((channel) => <p key={channel.id}>{channel.name} • {channel.type} • {channel.isActive ? 'Ativo' : 'Inativo'}</p>)}
+          <div className="compact-list">{channels.slice(0, 8).map((channel) => <div className="compact-row" key={channel.id}><span>{channel.name}<small>{channel.type} • {channel.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleChannel(channel)}>{channel.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
+        </article>
+      </section>
+
+      <section className="admin-grid">
+        <article>
+          <h3>Usuários</h3>
+          <input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Nome" />
+          <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="E-mail" />
+          <input value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} type="password" placeholder="Senha mínima 8 caracteres" />
+          <select value={newUserRole} onChange={(event) => setNewUserRole(event.target.value)}><option value="VIEWER">Viewer</option><option value="EDITOR">Editor</option><option value="ADMIN">Admin</option></select>
+          <button onClick={createUser}>Criar usuário</button>
+          <div className="compact-list">{users.slice(0, 8).map((user) => <div className="compact-row" key={user.id}><span>{user.name}<small>{user.email} • {user.role} • {user.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleUser(user)}>{user.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
+        </article>
+        <article>
+          <h3>Logs de envio</h3>
+          <button onClick={loadAdminData}>Atualizar logs</button>
+          <div className="compact-list">{logs.slice(0, 10).map((log) => <div className="compact-row" key={log.id}><span>{log.channel} • {log.status}<small>{log.offer?.title ?? 'Oferta indisponível'} {log.error ? `• ${log.error}` : ''}</small></span></div>)}</div>
         </article>
       </section>
 
