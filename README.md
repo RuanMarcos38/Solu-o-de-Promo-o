@@ -18,6 +18,7 @@ A solução foi pensada para operar como um “radar de promoções”:
 8. Permite criar alertas por categoria, palavra-chave, desconto mínimo e preço máximo.
 9. Permite administrar fontes, alertas, usuários e canais pelo painel.
 10. Distribui ofertas automaticamente para Telegram, WhatsApp genérico, Evolution API ou Webhook.
+11. Exibe status operacional de banco, Redis, fila, jobs, fontes, alertas, canais e logs.
 
 ## Stack Técnica
 
@@ -111,6 +112,7 @@ docker compose run --rm migrate
 docker compose up -d api worker
 curl -fsS http://localhost:3333/health
 curl -fsS http://localhost:3333/ready
+node scripts/smoke-public.mjs
 ```
 
 ### 3. Local Linux/Mac
@@ -158,6 +160,7 @@ GET /offers/stats
 GET /offers/:id/history
 POST /collect/run
 POST /collect/enqueue
+GET /admin/system
 GET /admin/users
 POST /admin/users
 PUT /admin/users/:id
@@ -182,6 +185,9 @@ POST /dispatch/test/:offerId
 O frontend permite:
 
 - login administrativo;
+- status operacional de API, banco, Redis e fila BullMQ;
+- contagem de jobs waiting, active, delayed, completed e failed;
+- indicadores de fontes, alertas, canais, envios e falhas;
 - criação de fontes por marketplace e palavras-chave;
 - ativar/desativar fontes;
 - criação de alertas;
