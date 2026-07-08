@@ -14,6 +14,7 @@ jobs:
       DATABASE_URL: postgresql://promo:promo@localhost:5432/promo_db?schema=public
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: ci-secret
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,7 +25,19 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --loglevel=error
 
-      - name: Verify TypeScript and build
-        run: npm run verify
+      - name: Prisma generate
+        run: npm run db:generate
+
+      - name: API typecheck
+        run: npm run lint -w apps/api
+
+      - name: Web typecheck
+        run: npm run lint -w apps/web
+
+      - name: API build
+        run: npm run build -w apps/api
+
+      - name: Web build
+        run: npm run build -w apps/web
