@@ -16,7 +16,7 @@ A solução foi pensada para operar como um “radar de promoções”:
 6. Publica as melhores ofertas no painel em tempo real via Socket.IO.
 7. Enfileira coletas recorrentes com Redis + BullMQ.
 8. Permite criar alertas por categoria, palavra-chave, desconto mínimo e preço máximo.
-9. Permite administrar fontes, alertas e canais pelo painel.
+9. Permite administrar fontes, alertas, usuários e canais pelo painel.
 10. Distribui ofertas automaticamente para Telegram, WhatsApp genérico ou Webhook.
 
 ## Stack Técnica
@@ -43,7 +43,7 @@ A arquitetura usa adaptadores por marketplace. Cada adaptador precisa respeitar 
 ├── apps
 │   ├── api          # API, worker, Prisma, conectores e websocket
 │   └── web          # painel em tempo real
-├── docs             # arquitetura e regras de negócio
+├── docs             # arquitetura, deploy e regras de negócio
 ├── scripts          # scripts de validação local
 ├── docker-compose.yml
 ├── .env.example
@@ -110,6 +110,7 @@ docker compose up -d postgres redis
 docker compose run --rm migrate
 docker compose up -d api worker
 curl -fsS http://localhost:3333/health
+curl -fsS http://localhost:3333/ready
 ```
 
 ### 3. Local Linux/Mac
@@ -139,6 +140,7 @@ bash scripts/verify-local.sh
 - API: `http://localhost:3333`
 - Frontend: `http://localhost:5173`
 - Healthcheck: `http://localhost:3333/health`
+- Readiness: `http://localhost:3333/ready`
 - Login inicial: `ADMIN_EMAIL` e `ADMIN_PASSWORD` configurados no `.env`.
 - Padrão local do `.env.example`: `admin@promoradar.local` / `admin123456`.
 
@@ -150,11 +152,15 @@ Troque `JWT_SECRET`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` antes de publicar em produ
 POST /auth/login
 GET /auth/me
 GET /health
+GET /ready
 GET /offers
 GET /offers/stats
 GET /offers/:id/history
 POST /collect/run
 POST /collect/enqueue
+GET /admin/users
+POST /admin/users
+PUT /admin/users/:id
 GET /admin/sources
 POST /admin/sources
 PUT /admin/sources/:id
@@ -167,8 +173,25 @@ GET /dispatch/channels
 POST /dispatch/channels
 PUT /dispatch/channels/:id
 DELETE /dispatch/channels/:id
+GET /dispatch/logs
 POST /dispatch/test/:offerId
 ```
+
+## Painel administrativo
+
+O frontend permite:
+
+- login administrativo;
+- criação de fontes por marketplace e palavras-chave;
+- ativar/desativar fontes;
+- criação de alertas;
+- ativar/desativar alertas;
+- criação de canais Webhook, Telegram e WhatsApp;
+- ativar/desativar canais;
+- criação e bloqueio de usuários;
+- visualização de logs de distribuição;
+- filtro de ofertas por marketplace, palavra-chave e desconto mínimo;
+- coleta manual com envio para fila.
 
 ## Tempo real
 
@@ -219,6 +242,10 @@ Uma oferta só entra no feed quando passa por critérios mínimos:
 - bloqueio de produtos duplicados;
 - publicação somente quando a oferta é nova, muda preço ou melhora score.
 
+## Deploy em produção
+
+Veja o guia completo em `docs/DEPLOY_PRODUCTION.md`.
+
 ## Variáveis importantes
 
 Veja `.env.example` para configurar:
@@ -241,7 +268,7 @@ Veja `.env.example` para configurar:
 4. Criar novas fontes pelo painel.
 5. Criar canais de distribuição.
 6. Definir política comercial de categorias, margem e frequência de postagem.
-7. Adicionar observabilidade com logs estruturados, métricas e alertas.
+7. Acompanhar logs de envio e métricas de ofertas no painel.
 
 ## Importante
 
