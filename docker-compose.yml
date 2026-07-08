@@ -45,6 +45,21 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: promo_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["npm", "run", "start:worker", "-w", "apps/api"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   web:
     build:
       context: .
