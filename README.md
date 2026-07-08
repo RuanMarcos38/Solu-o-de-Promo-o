@@ -44,6 +44,7 @@ A arquitetura usa adaptadores por marketplace. Cada adaptador precisa respeitar 
 │   ├── api          # API, worker, Prisma, conectores e websocket
 │   └── web          # painel em tempo real
 ├── docs             # arquitetura e regras de negócio
+├── scripts          # scripts de validação local
 ├── docker-compose.yml
 ├── .env.example
 └── package.json
@@ -81,6 +82,57 @@ docker compose up --build
 ```
 
 O Docker Compose executa o serviço `migrate` antes de subir API e worker, então o banco recebe as migrations automaticamente.
+
+## Formas de validar execução
+
+### 1. GitHub Actions — CI Node
+
+Workflow: `.github/workflows/ci.yml`.
+
+Executa:
+
+```bash
+npm install
+npm run db:generate
+npm run lint
+npm run build
+```
+
+### 2. GitHub Actions — Docker Build
+
+Workflow: `.github/workflows/docker-build.yml`.
+
+Executa:
+
+```bash
+docker compose build api worker web migrate
+docker compose up -d postgres redis
+docker compose run --rm migrate
+docker compose up -d api worker
+curl -fsS http://localhost:3333/health
+```
+
+### 3. Local Linux/Mac
+
+```bash
+bash scripts/verify-local.sh
+```
+
+### 4. Local Windows PowerShell
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify-local.ps1
+```
+
+### 5. GitHub Codespaces
+
+Abra o repositório no GitHub, clique em **Code > Codespaces > Create codespace**. O arquivo `.devcontainer/devcontainer.json` prepara Node 20, Docker e Prisma.
+
+Depois rode:
+
+```bash
+bash scripts/verify-local.sh
+```
 
 ## Acessos padrão
 
