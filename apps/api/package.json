@@ -17,13 +17,17 @@
   "dependencies": {
     "@fastify/cors": "latest",
     "@prisma/client": "latest",
+    "bcryptjs": "latest",
     "bullmq": "latest",
     "dotenv": "latest",
     "fastify": "latest",
     "ioredis": "latest",
-    "socket.io": "latest"
+    "jsonwebtoken": "latest",
+    "socket.io": "latest",
+    "zod": "latest"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "latest",
     "@types/node": "latest",
     "prisma": "latest",
     "tsx": "latest",
