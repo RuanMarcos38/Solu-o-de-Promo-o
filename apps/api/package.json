@@ -6,8 +6,10 @@
   "main": "dist/start.js",
   "scripts": {
     "dev": "tsx watch src/start.ts",
+    "dev:worker": "tsx watch src/worker.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/start.js",
+    "start:worker": "node dist/worker.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "lint": "tsc --noEmit"
@@ -15,8 +17,10 @@
   "dependencies": {
     "@fastify/cors": "latest",
     "@prisma/client": "latest",
+    "bullmq": "latest",
     "dotenv": "latest",
     "fastify": "latest",
+    "ioredis": "latest",
     "socket.io": "latest"
   },
   "devDependencies": {
