@@ -8,7 +8,7 @@ import { runCollection } from './collector.js';
 import { getOfferHistory, getStats, listOffers } from './offerStore.js';
 import { dispatchOffer } from './dispatch.js';
 import { prisma } from './db.js';
-import { connection, enqueueCollectionJob } from './queue.js';
+import { collectOffersQueue, connection, enqueueCollectionJob } from './queue.js';
 import { emitNewOffers, emitStats, setRealtimeServer } from './realtime.js';
 import { registerMarketplaceEventBridge } from './marketplaceEvents.js';
 import { toMarketplaceEnum, toMarketplaceName } from './marketplace.js';
@@ -43,6 +43,33 @@ function parseUserRole(value: unknown) {
   if (role === 'ADMIN') return UserRole.ADMIN;
   if (role === 'EDITOR') return UserRole.EDITOR;
   return UserRole.VIEWER;
+}
+
+async function getSystemStatus() {
+  const [queueCounts, totalOffers, activeSources, activeAlerts, activeChannels, failedDispatches, sentDispatches] = await Promise.all([
+    collectOffersQueue.getJobCounts('waiting', 'active', 'delayed', 'completed', 'failed'),
+    prisma.offer.count({ where: { isActive: true } }),
+    prisma.marketplaceSource.count({ where: { isActive: true } }),
+    prisma.alertRule.count({ where: { isActive: true } }),
+    prisma.dispatchChannel.count({ where: { isActive: true } }),
+    prisma.dispatchLog.count({ where: { status: 'FAILED' } }),
+    prisma.dispatchLog.count({ where: { status: 'SENT' } })
+  ]);
+
+  return {
+    status: 'ok',
+    database: 'ok',
+    redis: 'ok',
+    queue: queueCounts,
+    totals: {
+      offers: totalOffers,
+      activeSources,
+      activeAlerts,
+      activeChannels,
+      sentDispatches,
+      failedDispatches
+    }
+  };
 }
 
 export async function createApp() {
@@ -100,6 +127,11 @@ export async function createApp() {
     const body = request.body as any;
     const job = await enqueueCollectionJob({ keyword: body?.keyword, marketplace: toMarketplaceName(body?.marketplace) });
     return { status: 'queued', jobId: job.id };
+  });
+
+  app.get('/admin/system', async (request) => {
+    requireAuth(request);
+    return getSystemStatus();
   });
 
   app.get('/admin/users', async (request) => {
