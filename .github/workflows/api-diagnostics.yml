@@ -1,0 +1,48 @@
+name: API Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  api-typecheck-diagnostics:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://promo:promo@localhost:5432/promo_db?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-secret
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --loglevel=error
+
+      - name: Prisma generate
+        run: npm run db:generate
+
+      - name: Capture API typecheck output
+        run: |
+          set +e
+          npm run lint -w apps/api > api-typecheck.log 2>&1
+          echo $? > api-typecheck-exit-code.txt
+          cat api-typecheck.log
+          exit 0
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-typecheck-diagnostics
+          path: |
+            api-typecheck.log
+            api-typecheck-exit-code.txt
+
+      - name: Fail when API typecheck fails
+        run: test "$(cat api-typecheck-exit-code.txt)" = "0"
