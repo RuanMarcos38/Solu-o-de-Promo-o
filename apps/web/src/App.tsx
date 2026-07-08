@@ -25,6 +25,20 @@ type AlertRule = { id: string; name: string; isActive: boolean; keywords: string
 type DispatchChannel = { id: string; name: string; type: string; isActive: boolean };
 type User = { id: string; name: string; email: string; role: string; isActive: boolean };
 type DispatchLog = { id: string; channel: string; status: string; error?: string; createdAt: string; offer?: { title: string; marketplace: string; currentPrice: number } | null };
+type SystemStatus = {
+  status: string;
+  database: string;
+  redis: string;
+  queue: Record<string, number>;
+  totals: {
+    offers: number;
+    activeSources: number;
+    activeAlerts: number;
+    activeChannels: number;
+    sentDispatches: number;
+    failedDispatches: number;
+  };
+};
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3333';
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -51,6 +65,7 @@ export function App() {
   const [channels, setChannels] = useState<DispatchChannel[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [logs, setLogs] = useState<DispatchLog[]>([]);
+  const [system, setSystem] = useState<SystemStatus | null>(null);
   const [channelConfig, setChannelConfig] = useState(channelExamples.webhook);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserName, setNewUserName] = useState('');
@@ -112,18 +127,20 @@ export function App() {
 
   async function loadAdminData() {
     if (!token) return;
-    const [sourcesResponse, alertsResponse, channelsResponse, usersResponse, logsResponse] = await Promise.all([
+    const [sourcesResponse, alertsResponse, channelsResponse, usersResponse, logsResponse, systemResponse] = await Promise.all([
       apiFetch('/admin/sources'),
       apiFetch('/alerts'),
       apiFetch('/dispatch/channels'),
       apiFetch('/admin/users'),
-      apiFetch('/dispatch/logs?limit=20')
+      apiFetch('/dispatch/logs?limit=20'),
+      apiFetch('/admin/system')
     ]);
     setSources((await sourcesResponse.json()).sources ?? []);
     setAlerts((await alertsResponse.json()).alerts ?? []);
     setChannels((await channelsResponse.json()).channels ?? []);
     setUsers((await usersResponse.json()).users ?? []);
     setLogs((await logsResponse.json()).logs ?? []);
+    setSystem(await systemResponse.json());
   }
 
   async function collectNow() {
@@ -132,6 +149,7 @@ export function App() {
     try {
       await apiFetch('/collect/enqueue', { method: 'POST', body: JSON.stringify({ keyword, marketplace }) });
       setStatusMessage('Coleta enviada para a fila.');
+      await loadAdminData();
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Erro ao enfileirar coleta.');
     } finally {
@@ -250,6 +268,7 @@ export function App() {
           <input value={minDiscount} onChange={(event) => setMinDiscount(event.target.value)} placeholder="Desconto mínimo" />
           <button onClick={loadData}>Filtrar</button>
           <button onClick={collectNow} disabled={loading}>{loading ? 'Enfileirando...' : 'Varrer agora'}</button>
+          <button onClick={loadAdminData}>Atualizar operação</button>
         </div>
         {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
       </section>
@@ -259,6 +278,34 @@ export function App() {
         <article><strong>{stats.bestScore}</strong><span>Melhor score</span></article>
         <article><strong>{stats.bestDiscount}%</strong><span>Maior desconto</span></article>
       </section>
+
+      {system ? (
+        <section className="admin-grid">
+          <article>
+            <h3>Status da operação</h3>
+            <div className="compact-list">
+              <div className="compact-row"><span>API geral<small>{system.status}</small></span></div>
+              <div className="compact-row"><span>Banco de dados<small>{system.database}</small></span></div>
+              <div className="compact-row"><span>Redis / fila<small>{system.redis}</small></span></div>
+            </div>
+          </article>
+          <article>
+            <h3>Fila BullMQ</h3>
+            <div className="compact-list">
+              {Object.entries(system.queue).map(([key, value]) => <div className="compact-row" key={key}><span>{key}<small>{value} jobs</small></span></div>)}
+            </div>
+          </article>
+          <article>
+            <h3>Indicadores internos</h3>
+            <div className="compact-list">
+              <div className="compact-row"><span>Fontes ativas<small>{system.totals.activeSources}</small></span></div>
+              <div className="compact-row"><span>Alertas ativos<small>{system.totals.activeAlerts}</small></span></div>
+              <div className="compact-row"><span>Canais ativos<small>{system.totals.activeChannels}</small></span></div>
+              <div className="compact-row"><span>Envios / falhas<small>{system.totals.sentDispatches} / {system.totals.failedDispatches}</small></span></div>
+            </div>
+          </article>
+        </section>
+      ) : null}
 
       <section className="admin-grid">
         <article>
