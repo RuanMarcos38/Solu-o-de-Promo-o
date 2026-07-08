@@ -5,10 +5,11 @@ import { runCollection } from './collector.js';
 import { getStats } from './offerStore.js';
 import { publishCollectionCompleted } from './marketplaceEvents.js';
 import { connection, collectOffersQueue, enqueueCollectionJob } from './queue.js';
+import type { MarketplaceName } from './types.js';
 
 type CollectJobData = {
   keyword?: string;
-  marketplace?: any;
+  marketplace?: MarketplaceName;
 };
 
 const worker = new Worker<CollectJobData>(
@@ -34,11 +35,11 @@ worker.on('failed', (job, error) => {
   console.error(`[worker] job ${job?.id} failed`, error);
 });
 
-await collectOffersQueue.upsertJobScheduler('recurring-default-collection', {
-  every: config.collectIntervalSeconds * 1000
-}, {
-  name: 'collect',
-  data: {}
+await collectOffersQueue.add('collect', {}, {
+  jobId: 'recurring-default-collection',
+  repeat: { every: config.collectIntervalSeconds * 1000 },
+  removeOnComplete: 100,
+  removeOnFail: 100
 });
 
 await enqueueCollectionJob({});
