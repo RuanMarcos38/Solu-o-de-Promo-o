@@ -5,10 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
-  build:
+  node-verify:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://promo:promo@localhost:5432/promo_db?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-secret
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,16 +22,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install dependencies
         run: npm install
 
-      - name: Generate Prisma client
-        run: npm run db:generate
-
-      - name: Typecheck
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
+      - name: Verify TypeScript and build
+        run: npm run verify
