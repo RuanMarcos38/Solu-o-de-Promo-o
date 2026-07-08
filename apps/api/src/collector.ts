@@ -1,5 +1,6 @@
 import { adapters } from './adapters/index.js';
 import { config } from './config.js';
+import { dispatchOffers } from './dispatch.js';
 import { upsertOffers } from './offerStore.js';
 import type { MarketplaceName } from './types.js';
 
@@ -20,6 +21,8 @@ export async function runCollection(options?: { keyword?: string; marketplace?: 
       }
     }
   }
+
+  await dispatchOffers(approved as any);
 
   return {
     approved,
