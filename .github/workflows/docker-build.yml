@@ -52,6 +52,9 @@ jobs:
       - name: API healthcheck
         run: curl -fsS http://localhost:3333/health
 
+      - name: API readiness
+        run: curl -fsS http://localhost:3333/ready
+
       - name: Logs on failure
         if: failure()
         run: docker compose logs
