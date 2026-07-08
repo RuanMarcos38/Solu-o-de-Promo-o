@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Solução de Promoção | Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #080b14;
+        color: #f8fafc;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top left, #172554, transparent 32%), #080b14; }
+      button, input, select, textarea { font: inherit; }
+      .app-shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 42px 0; }
+      .hero { display: grid; gap: 24px; padding: 34px; border: 1px solid rgba(148, 163, 184, .2); border-radius: 28px; background: rgba(15, 23, 42, .78); box-shadow: 0 24px 90px rgba(0,0,0,.35); }
+      .topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+      .badge { width: fit-content; padding: 8px 12px; border-radius: 999px; background: rgba(14, 165, 233, .14); color: #7dd3fc; border: 1px solid rgba(125, 211, 252, .25); font-weight: 700; }
+      h1 { margin: 0; font-size: clamp(2.5rem, 7vw, 5rem); line-height: .95; letter-spacing: -0.06em; }
+      h3 { margin: 0 0 14px; }
+      p { color: #cbd5e1; line-height: 1.7; }
+      .collector-actions, .mini-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+      input, select, textarea { flex: 1 1 220px; border: 1px solid rgba(148, 163, 184, .22); border-radius: 16px; padding: 14px 16px; background: rgba(2, 6, 23, .72); color: #fff; min-width: 0; }
+      textarea { width: 100%; min-height: 98px; resize: vertical; }
+      button { border: 0; border-radius: 16px; padding: 14px 18px; background: linear-gradient(135deg, #38bdf8, #8b5cf6); color: #fff; font-weight: 800; cursor: pointer; }
+      .ghost-button { background: rgba(148, 163, 184, .14); color: #e2e8f0; border: 1px solid rgba(148, 163, 184, .18); }
+      .status-message { margin: 0; padding: 12px 14px; border-radius: 14px; background: rgba(34, 197, 94, .1); border: 1px solid rgba(34, 197, 94, .18); color: #bbf7d0; }
+      .stats-grid, .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 22px; }
+      .stats-grid article, .admin-grid article { padding: 22px; border-radius: 22px; background: rgba(15, 23, 42, .72); border: 1px solid rgba(148, 163, 184, .14); }
+      .stats-grid strong { display: block; font-size: 2rem; }
+      .stats-grid span { color: #94a3b8; font-weight: 700; }
+      .admin-grid article { display: grid; gap: 12px; align-content: start; }
+      .admin-grid p { margin: 10px 0 0; font-size: .9rem; }
+      .compact-list { display: grid; gap: 10px; margin-top: 4px; }
+      .compact-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 16px; background: rgba(2, 6, 23, .42); border: 1px solid rgba(148, 163, 184, .12); }
+      .compact-row span { display: grid; gap: 4px; min-width: 0; font-weight: 800; }
+      .compact-row small { color: #94a3b8; font-weight: 600; overflow-wrap: anywhere; }
+      .compact-row button { padding: 10px 12px; border-radius: 12px; font-size: .82rem; flex: 0 0 auto; }
+      .offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; margin-top: 24px; }
+      .offer-card { overflow: hidden; border-radius: 22px; background: rgba(15, 23, 42, .82); border: 1px solid rgba(148, 163, 184, .14); }
+      .offer-thumb { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 11; background: linear-gradient(135deg, rgba(56,189,248,.22), rgba(139,92,246,.28)); color: #e0f2fe; font-size: 3rem; }
+      .offer-card div { padding: 18px; }
+      .offer-card h2 { min-height: 72px; margin: 10px 0; font-size: 1rem; line-height: 1.4; }
+      .offer-card strong { font-size: 1.35rem; }
+      .offer-card a { display: inline-flex; margin-top: 12px; color: #7dd3fc; font-weight: 800; text-decoration: none; }
+      .marketplace { color: #93c5fd; font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+    </style>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div class="topbar">
+          <span class="badge">Radar ao vivo</span>
+          <button class="ghost-button">Sair</button>
+        </div>
+        <h1>Solução de Promoção</h1>
+        <p>Painel para encontrar oportunidades em marketplaces confiáveis, aprovar ofertas por score e distribuir automaticamente conforme alertas ativos.</p>
+        <div class="collector-actions">
+          <input value="iphone, notebook, smart tv" aria-label="Palavras-chave" />
+          <select aria-label="Marketplace"><option>Mercado Livre</option><option>Amazon</option><option>Shopee</option></select>
+          <input value="10" aria-label="Desconto mínimo" />
+          <button>Filtrar</button>
+          <button>Varrer agora</button>
+          <button>Atualizar operação</button>
+        </div>
+        <p class="status-message">Coleta enviada para a fila. Status operacional atualizado.</p>
+      </section>
+
+      <section class="stats-grid">
+        <article><strong>128</strong><span>Ofertas aprovadas</span></article>
+        <article><strong>94</strong><span>Melhor score</span></article>
+        <article><strong>42%</strong><span>Maior desconto</span></article>
+      </section>
+
+      <section class="admin-grid">
+        <article>
+          <h3>Status da operação</h3>
+          <div class="compact-list">
+            <div class="compact-row"><span>API geral<small>ok</small></span></div>
+            <div class="compact-row"><span>Banco de dados<small>ok</small></span></div>
+            <div class="compact-row"><span>Redis / fila<small>ok</small></span></div>
+          </div>
+        </article>
+        <article>
+          <h3>Fila BullMQ</h3>
+          <div class="compact-list">
+            <div class="compact-row"><span>waiting<small>2 jobs</small></span></div>
+            <div class="compact-row"><span>active<small>1 job</small></span></div>
+            <div class="compact-row"><span>completed<small>86 jobs</small></span></div>
+          </div>
+        </article>
+        <article>
+          <h3>Indicadores internos</h3>
+          <div class="compact-list">
+            <div class="compact-row"><span>Fontes ativas<small>3</small></span></div>
+            <div class="compact-row"><span>Alertas ativos<small>5</small></span></div>
+            <div class="compact-row"><span>Canais ativos<small>2</small></span></div>
+            <div class="compact-row"><span>Envios / falhas<small>74 / 1</small></span></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="admin-grid">
+        <article>
+          <h3>Fontes</h3>
+          <button>Criar fonte da busca atual</button>
+          <div class="compact-list">
+            <div class="compact-row"><span>Fonte Mercado Livre<small>mercadolivre • iphone, notebook</small></span><button>Desativar</button></div>
+            <div class="compact-row"><span>Fonte Amazon<small>amazon • tecnologia</small></span><button>Ativar</button></div>
+          </div>
+        </article>
+        <article>
+          <h3>Alertas</h3>
+          <button>Criar alerta da busca atual</button>
+          <p>Com alertas ativos, só serão distribuídas ofertas que combinarem com as regras.</p>
+          <div class="compact-list">
+            <div class="compact-row"><span>Alerta iPhone<small>10% OFF • Ativo</small></span><button>Desativar</button></div>
+            <div class="compact-row"><span>Alerta Notebook<small>15% OFF • Ativo</small></span><button>Desativar</button></div>
+          </div>
+        </article>
+        <article>
+          <h3>Distribuição</h3>
+          <div class="mini-actions"><button>Modelo Webhook</button><button>Modelo Telegram</button><button>Modelo Evolution</button></div>
+          <textarea>{"baseUrl":"https://evolution.seudominio.com","apiKey":"SUA_API_KEY","instanceName":"minha-instancia","number":"5547999999999"}</textarea>
+          <div class="mini-actions"><button>Webhook</button><button>Telegram</button><button>WhatsApp</button><button>Evolution API</button></div>
+        </article>
+      </section>
+
+      <section class="admin-grid">
+        <article>
+          <h3>Usuários</h3>
+          <input value="Administrador" aria-label="Nome" />
+          <input value="admin@promoradar.local" aria-label="E-mail" />
+          <input value="********" aria-label="Senha" />
+          <select aria-label="Permissão"><option>Admin</option><option>Editor</option><option>Viewer</option></select>
+          <button>Criar usuário</button>
+        </article>
+        <article>
+          <h3>Logs de envio</h3>
+          <button>Atualizar logs</button>
+          <div class="compact-list">
+            <div class="compact-row"><span>webhook • SENT<small>iPhone 15 com desconto</small></span></div>
+            <div class="compact-row"><span>alert-filter • SKIPPED<small>Oferta fora da regra de alerta</small></span></div>
+            <div class="compact-row"><span>evolution • FAILED<small>Credencial externa pendente</small></span></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="offer-grid">
+        <article class="offer-card">
+          <div class="offer-thumb">📱</div>
+          <div><span class="marketplace">Mercado Livre • Score 94</span><h2>iPhone 15 128GB com desconto e frete grátis</h2><strong>R$ 4.299,00</strong><p>22% OFF</p><a href="#">Ver oferta</a></div>
+        </article>
+        <article class="offer-card">
+          <div class="offer-thumb">💻</div>
+          <div><span class="marketplace">Mercado Livre • Score 89</span><h2>Notebook i5 16GB SSD 512GB promoção relâmpago</h2><strong>R$ 2.799,00</strong><p>31% OFF</p><a href="#">Ver oferta</a></div>
+        </article>
+        <article class="offer-card">
+          <div class="offer-thumb">🎧</div>
+          <div><span class="marketplace">Mercado Livre • Score 81</span><h2>Fone bluetooth com cancelamento de ruído</h2><strong>R$ 189,90</strong><p>18% OFF</p><a href="#">Ver oferta</a></div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
