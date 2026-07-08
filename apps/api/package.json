@@ -12,6 +12,7 @@
     "start:worker": "node dist/worker.js",
     "prisma:generate": "node scripts/prisma-generate.cjs",
     "prisma:migrate": "node scripts/prisma-migrate.cjs",
+    "prisma:deploy": "prisma migrate deploy",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
