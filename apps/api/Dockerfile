@@ -8,7 +8,7 @@ RUN npm install
 FROM deps AS build
 WORKDIR /app
 COPY . .
-RUN npm run prisma:generate -w apps/api
+RUN export DATABASE_URL="postgresql://localhost:5432/promo_db" && npm run prisma:generate -w apps/api
 RUN npm run build -w apps/api
 
 FROM node:20-alpine AS runner
