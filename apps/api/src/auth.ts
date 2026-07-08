@@ -12,11 +12,27 @@ export type AuthUser = {
   role: UserRole;
 };
 
+export function safeUser(user: { id: string; name: string; email: string; role: UserRole; isActive?: boolean; createdAt?: Date; updatedAt?: Date }) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    ...(user.isActive !== undefined ? { isActive: user.isActive } : {}),
+    ...(user.createdAt ? { createdAt: user.createdAt } : {}),
+    ...(user.updatedAt ? { updatedAt: user.updatedAt } : {})
+  };
+}
+
+export async function hashPassword(password: string) {
+  return bcrypt.hash(password, 12);
+}
+
 export async function ensureAdminUser() {
   const existing = await prisma.user.findUnique({ where: { email: config.adminEmail } });
   if (existing) return existing;
 
-  const passwordHash = await bcrypt.hash(config.adminPassword, 12);
+  const passwordHash = await hashPassword(config.adminPassword);
 
   return prisma.user.create({
     data: {
@@ -35,7 +51,7 @@ export async function login(email: string, password: string) {
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return null;
 
-  const safeUser: AuthUser = {
+  const authUser: AuthUser = {
     id: user.id,
     name: user.name,
     email: user.email,
@@ -43,8 +59,8 @@ export async function login(email: string, password: string) {
   };
 
   const options: SignOptions = { expiresIn: config.jwtExpiresIn as SignOptions['expiresIn'] };
-  const token = jwt.sign(safeUser, config.jwtSecret, options);
-  return { user: safeUser, token };
+  const token = jwt.sign(authUser, config.jwtSecret, options);
+  return { user: authUser, token };
 }
 
 export function requireAuth(request: FastifyRequest) {
