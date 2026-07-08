@@ -29,6 +29,13 @@ type DispatchLog = { id: string; channel: string; status: string; error?: string
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3333';
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
+const channelExamples: Record<string, string> = {
+  webhook: '{"url":"https://seu-webhook.com/ofertas"}',
+  telegram: '{"botToken":"TOKEN_DO_BOT","chatId":"ID_DO_CANAL"}',
+  whatsapp: '{"url":"https://sua-api-whatsapp.com/send","token":"TOKEN","to":"5547999999999"}',
+  evolution: '{"baseUrl":"https://evolution.seudominio.com","apiKey":"SUA_API_KEY","instanceName":"minha-instancia","number":"5547999999999"}'
+};
+
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem('promo_token') ?? '');
   const [email, setEmail] = useState('admin@promoradar.local');
@@ -44,7 +51,7 @@ export function App() {
   const [channels, setChannels] = useState<DispatchChannel[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [logs, setLogs] = useState<DispatchLog[]>([]);
-  const [channelConfig, setChannelConfig] = useState('{"url":"https://seu-webhook.com/ofertas"}');
+  const [channelConfig, setChannelConfig] = useState(channelExamples.webhook);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
@@ -151,7 +158,7 @@ export function App() {
       method: 'POST',
       body: JSON.stringify({ name: `Alerta ${keyword}`, keywords: keyword.split(',').map((item) => item.trim()).filter(Boolean), marketplaces: [marketplace], minDiscountPercent: Number(minDiscount || 10) })
     });
-    setStatusMessage('Alerta criado.');
+    setStatusMessage('Alerta criado. A distribuição agora respeita alertas ativos.');
     await loadAdminData();
   }
 
@@ -232,7 +239,7 @@ export function App() {
       <section className="hero">
         <div className="topbar"><span className="badge">Radar ao vivo</span><button className="ghost-button" onClick={logout}>Sair</button></div>
         <h1>Solução de Promoção</h1>
-        <p>Painel para encontrar oportunidades em marketplaces confiáveis, aprovar ofertas por score e distribuir automaticamente.</p>
+        <p>Painel para encontrar oportunidades em marketplaces confiáveis, aprovar ofertas por score e distribuir automaticamente conforme alertas ativos.</p>
         <div className="collector-actions">
           <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="iphone, notebook, smart tv..." />
           <select value={marketplace} onChange={(event) => setMarketplace(event.target.value)}>
@@ -262,12 +269,14 @@ export function App() {
         <article>
           <h3>Alertas</h3>
           <button onClick={createAlert}>Criar alerta da busca atual</button>
+          <p className="panel-hint">Com alertas ativos, só serão distribuídas ofertas que combinarem com as regras.</p>
           <div className="compact-list">{alerts.slice(0, 8).map((alert) => <div className="compact-row" key={alert.id}><span>{alert.name}<small>{alert.minDiscountPercent}% OFF • {alert.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleAlert(alert)}>{alert.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
         </article>
         <article>
           <h3>Distribuição</h3>
+          <div className="mini-actions"><button onClick={() => setChannelConfig(channelExamples.webhook)}>Modelo Webhook</button><button onClick={() => setChannelConfig(channelExamples.telegram)}>Modelo Telegram</button><button onClick={() => setChannelConfig(channelExamples.evolution)}>Modelo Evolution</button></div>
           <textarea value={channelConfig} onChange={(event) => setChannelConfig(event.target.value)} />
-          <div className="mini-actions"><button onClick={() => createChannel('webhook')}>Webhook</button><button onClick={() => createChannel('telegram')}>Telegram</button><button onClick={() => createChannel('whatsapp')}>WhatsApp</button></div>
+          <div className="mini-actions"><button onClick={() => createChannel('webhook')}>Webhook</button><button onClick={() => createChannel('telegram')}>Telegram</button><button onClick={() => createChannel('whatsapp')}>WhatsApp</button><button onClick={() => createChannel('evolution')}>Evolution API</button></div>
           <div className="compact-list">{channels.slice(0, 8).map((channel) => <div className="compact-row" key={channel.id}><span>{channel.name}<small>{channel.type} • {channel.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleChannel(channel)}>{channel.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
         </article>
       </section>
