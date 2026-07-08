@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/start.js",
     "start:worker": "node dist/worker.js",
-    "prisma:generate": "prisma generate",
+    "prisma:generate": "node scripts/prisma-generate.cjs",
     "prisma:migrate": "prisma migrate dev",
     "lint": "tsc --noEmit"
   },
