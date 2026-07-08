@@ -18,10 +18,15 @@ p { color: #cbd5e1; line-height: 1.7; }
 input { flex: 1 1 260px; border: 1px solid rgba(148, 163, 184, .22); border-radius: 16px; padding: 14px 16px; background: rgba(2, 6, 23, .72); color: #fff; }
 button { border: 0; border-radius: 16px; padding: 14px 18px; background: linear-gradient(135deg, #38bdf8, #8b5cf6); color: #fff; font-weight: 800; cursor: pointer; }
 button:disabled { opacity: .65; cursor: progress; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-top: 22px; }
+.stats-grid article { padding: 22px; border-radius: 22px; background: rgba(15, 23, 42, .72); border: 1px solid rgba(148, 163, 184, .14); }
+.stats-grid strong { display: block; font-size: 2rem; }
+.stats-grid span { color: #94a3b8; font-weight: 700; }
 .offer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; margin-top: 24px; }
 .offer-card { overflow: hidden; border-radius: 22px; background: rgba(15, 23, 42, .82); border: 1px solid rgba(148, 163, 184, .14); }
 .offer-card img { width: 100%; aspect-ratio: 16 / 11; object-fit: cover; background: #fff; }
 .offer-card div { padding: 18px; }
 .offer-card h2 { min-height: 72px; margin: 10px 0; font-size: 1rem; line-height: 1.4; }
 .offer-card strong { font-size: 1.35rem; }
+.offer-card a { display: inline-flex; margin-top: 12px; color: #7dd3fc; font-weight: 800; text-decoration: none; }
 .marketplace { color: #93c5fd; font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
