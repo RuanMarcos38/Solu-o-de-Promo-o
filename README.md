@@ -261,6 +261,8 @@ Uma oferta só entra no feed quando passa por critérios mínimos:
 
 Veja os guias:
 
+- `docs/FINAL_HANDOFF.md` — entrega final do projeto.
+- `docs/GO_LIVE_CHECKLIST.md` — checklist final antes de publicar.
 - `docs/DEPLOY_PRODUCTION.md` — guia geral de produção.
 - `docs/EASYPANEL_DEPLOY.md` — passo a passo para EasyPanel.
 
