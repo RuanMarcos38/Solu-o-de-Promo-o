@@ -13,7 +13,8 @@ export async function runCollection(options?: { keyword?: string; marketplace?: 
     for (const keyword of keywords) {
       try {
         const found = await adapter.search({ keyword, limit: config.maxResultsPerSource });
-        approved.push(...upsertOffers(found));
+        const saved = await upsertOffers(found);
+        approved.push(...saved);
       } catch (error) {
         errors.push({ marketplace: adapter.name, keyword, error: error instanceof Error ? error.message : 'Erro desconhecido' });
       }
