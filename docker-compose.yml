@@ -76,10 +76,10 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: ${PUBLIC_API_URL:-http://localhost:3333}
     container_name: promo_web
     restart: unless-stopped
-    environment:
-      VITE_API_URL: http://localhost:3333
     ports:
       - "5173:80"
     depends_on:
