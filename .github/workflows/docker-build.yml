@@ -55,6 +55,9 @@ jobs:
       - name: API readiness
         run: curl -fsS http://localhost:3333/ready
 
+      - name: Public API smoke test
+        run: node scripts/smoke-public.mjs
+
       - name: Logs on failure
         if: failure()
         run: docker compose logs
