@@ -41,8 +41,6 @@ await collectOffersQueue.upsertJobScheduler('recurring-default-collection', {
   data: {}
 });
 
-for (const keyword of config.defaultKeywords) {
-  await enqueueCollectionJob({ keyword, marketplace: 'mercadolivre' });
-}
+await enqueueCollectionJob({});
 
 console.log('[worker] collection worker running');
