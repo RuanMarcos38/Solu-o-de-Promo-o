@@ -1,0 +1,46 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare env
+        run: cp .env.example .env
+
+      - name: Docker compose build
+        run: docker compose build api worker web migrate
+
+      - name: Start dependencies
+        run: docker compose up -d postgres redis
+
+      - name: Run migrations
+        run: docker compose run --rm migrate
+
+      - name: Start services
+        run: docker compose up -d api worker
+
+      - name: Wait for API health
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:3333/health; then exit 0; fi
+            sleep 2
+          done
+          docker compose logs api
+          exit 1
+
+      - name: API healthcheck
+        run: curl -fsS http://localhost:3333/health
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
