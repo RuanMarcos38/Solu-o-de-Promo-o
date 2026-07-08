@@ -29,6 +29,18 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: promo_migrate
+    env_file:
+      - .env
+    command: ["npm", "run", "prisma:deploy", "-w", "apps/api"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -40,8 +52,8 @@ services:
     ports:
       - "3333:3333"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
@@ -55,8 +67,8 @@ services:
       - .env
     command: ["npm", "run", "start:worker", "-w", "apps/api"]
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
