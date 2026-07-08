@@ -3,6 +3,7 @@ import { Worker } from 'bullmq';
 import { config } from './config.js';
 import { runCollection } from './collector.js';
 import { getStats } from './offerStore.js';
+import { publishCollectionCompleted } from './marketplaceEvents.js';
 import { connection, collectOffersQueue, enqueueCollectionJob } from './queue.js';
 
 type CollectJobData = {
@@ -14,10 +15,12 @@ const worker = new Worker<CollectJobData>(
   'collect-offers',
   async (job) => {
     const result = await runCollection(job.data);
+    const stats = await getStats();
+    await publishCollectionCompleted({ offers: result.approved, stats });
     return {
       approvedCount: result.approvedCount,
       errorCount: result.errors.length,
-      stats: await getStats()
+      stats
     };
   },
   { connection, concurrency: 3 }
