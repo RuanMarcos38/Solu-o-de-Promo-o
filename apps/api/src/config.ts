@@ -19,5 +19,10 @@ export const config = {
   minOpportunityScore: readNumber('MIN_OPPORTUNITY_SCORE', 55),
   maxResultsPerSource: readNumber('MAX_RESULTS_PER_SOURCE', 30),
   collectIntervalSeconds: readNumber('COLLECT_INTERVAL_SECONDS', 60),
-  mercadoLivreSiteId: process.env.MERCADO_LIVRE_SITE_ID ?? 'MLB'
+  mercadoLivreSiteId: process.env.MERCADO_LIVRE_SITE_ID ?? 'MLB',
+  jwtSecret: process.env.JWT_SECRET ?? 'change-me-in-production',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+  adminEmail: process.env.ADMIN_EMAIL ?? 'admin@promoradar.local',
+  adminPassword: process.env.ADMIN_PASSWORD ?? 'admin123456',
+  adminName: process.env.ADMIN_NAME ?? 'Administrador'
 };
