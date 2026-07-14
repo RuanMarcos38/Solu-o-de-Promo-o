@@ -55,6 +55,21 @@ jobs:
       - name: API readiness
         run: curl -fsS http://localhost:3333/ready
 
+      - name: Worker observability healthcheck
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:9464/health; then exit 0; fi
+            sleep 2
+          done
+          docker compose logs worker
+          exit 1
+
+      - name: Worker Prometheus metrics
+        run: |
+          curl -fsS http://localhost:9464/metrics > worker-metrics.txt
+          grep -q 'promotion_radar_queue_depth' worker-metrics.txt
+          grep -q 'promotion_radar_service_info' worker-metrics.txt
+
       - name: Public API smoke test
         run: node scripts/smoke-public.mjs
 
