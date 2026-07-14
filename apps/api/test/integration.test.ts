@@ -7,7 +7,7 @@ import { hashPassword } from '../src/auth.js';
 import { prisma } from '../src/db.js';
 import { dispatchOffer } from '../src/dispatch.js';
 import { upsertOffers } from '../src/offerStore.js';
-import { connection } from '../src/queue.js';
+import { collectOffersQueue, connection } from '../src/queue.js';
 import type { NormalizedOffer } from '../src/types.js';
 
 let app: FastifyInstance;
@@ -78,6 +78,7 @@ before(async () => {
 
 after(async () => {
   if (app) await app.close();
+  await collectOffersQueue.close();
   if (connection.status !== 'end') await connection.quit();
   await prisma.$disconnect();
 });
