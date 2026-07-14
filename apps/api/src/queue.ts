@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 import { config } from './config.js';
+import { operationalConfig, type OperationalAlertChannel } from './operationalConfig.js';
 
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const parsedRedisUrl = new URL(redisUrl);
@@ -26,6 +28,7 @@ export const connection = new Redis(redisUrl, {
 export const COLLECT_QUEUE_NAME = 'collect-offers';
 export const DISPATCH_QUEUE_NAME = 'dispatch-offers';
 export const DISPATCH_DLQ_NAME = 'dispatch-dead-letter';
+export const OPERATIONAL_ALERT_QUEUE_NAME = 'operational-alerts';
 
 export type DispatchJobData = {
   offerId: string;
@@ -42,6 +45,20 @@ export type DispatchDeadLetterData = DispatchJobData & {
   failedReason: string;
   attemptsMade: number;
 };
+
+export type OperationalAlert = {
+  kind: 'dlq-item' | 'dlq-threshold' | 'dlq-recovery' | 'test';
+  severity: 'info' | 'warning' | 'critical' | 'recovery';
+  title: string;
+  message: string;
+  deduplicationKey: string;
+  occurredAt: string;
+  details: Record<string, unknown>;
+};
+
+export type OperationalAlertQueueData =
+  | { type: 'delivery'; channel: OperationalAlertChannel; alert: OperationalAlert }
+  | { type: 'monitor' };
 
 export const collectOffersQueue = new Queue(COLLECT_QUEUE_NAME, {
   connection: queueConnection
@@ -68,6 +85,16 @@ export const dispatchDeadLetterQueue = new Queue<DispatchDeadLetterData>(DISPATC
   defaultJobOptions: {
     removeOnComplete: false,
     removeOnFail: false
+  }
+});
+
+export const operationalAlertsQueue = new Queue<OperationalAlertQueueData>(OPERATIONAL_ALERT_QUEUE_NAME, {
+  connection: queueConnection,
+  defaultJobOptions: {
+    attempts: operationalConfig.attempts,
+    backoff: { type: 'exponential', delay: operationalConfig.backoffMs },
+    removeOnComplete: { age: 604_800, count: 5_000 },
+    removeOnFail: { age: 1_209_600, count: 5_000 }
   }
 });
 
@@ -98,6 +125,39 @@ export async function enqueueDeadLetterJob(data: DispatchDeadLetterData) {
   const existing = await dispatchDeadLetterQueue.getJob(jobId);
   if (existing) return existing;
   return dispatchDeadLetterQueue.add('dead-letter', data, { jobId });
+}
+
+export async function enqueueOperationalAlert(alert: OperationalAlert) {
+  const results: Array<{ channel: OperationalAlertChannel; jobId: string; created: boolean }> = [];
+  for (const channel of operationalConfig.channels) {
+    const digest = createHash('sha256').update(`${alert.deduplicationKey}:${channel}`).digest('hex');
+    const jobId = `operational-alert-${digest}`;
+    const existing = await operationalAlertsQueue.getJob(jobId);
+    if (existing) {
+      results.push({ channel, jobId, created: false });
+      continue;
+    }
+    const job = await operationalAlertsQueue.add('deliver', { type: 'delivery', channel, alert }, { jobId });
+    results.push({ channel, jobId: String(job.id), created: true });
+  }
+  return results;
+}
+
+export async function scheduleOperationalAlertMonitor() {
+  return operationalAlertsQueue.add('monitor-dlq', { type: 'monitor' }, {
+    jobId: 'operational-dlq-monitor',
+    repeat: { every: operationalConfig.checkIntervalSeconds * 1000 },
+    removeOnComplete: 100,
+    removeOnFail: 100
+  });
+}
+
+export async function enqueueOperationalAlertMonitorNow() {
+  return operationalAlertsQueue.add('monitor-dlq', { type: 'monitor' }, {
+    jobId: `operational-dlq-monitor-${Date.now()}`,
+    removeOnComplete: 10,
+    removeOnFail: 10
+  });
 }
 
 export async function retryDeadLetterJob(deadLetterJobId: string) {
