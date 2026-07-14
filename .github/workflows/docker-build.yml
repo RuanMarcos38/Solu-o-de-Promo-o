@@ -24,13 +24,13 @@ jobs:
           sed -i "s/^METRICS_BEARER_TOKEN=.*/METRICS_BEARER_TOKEN=${CI_METRICS_TOKEN}/" .env
           mkdir -p ops/alertmanager/generated ops/observability/secrets
           cp ops/alertmanager/alertmanager.example.yml ops/alertmanager/generated/alertmanager.yml
-          printf '%s\n' "$CI_METRICS_TOKEN" > ops/observability/secrets/promotion_radar_metrics_token
-          printf '%s\n' 'ci-grafana-password' > ops/observability/secrets/grafana_admin_password
-          printf '%s\n' 'ci-smtp-password' > ops/observability/secrets/alertmanager_smtp_password
-          printf '%s\n' 'ci-telegram-token' > ops/observability/secrets/alertmanager_telegram_bot_token
-          printf '%s\n' 'https://example.invalid/primary' > ops/observability/secrets/alertmanager_primary_webhook_url
-          printf '%s\n' 'https://example.invalid/secondary' > ops/observability/secrets/alertmanager_secondary_webhook_url
-          printf '%s\n' 'https://example.invalid/warning' > ops/observability/secrets/alertmanager_warning_webhook_url
+          printf '%s' "$CI_METRICS_TOKEN" > ops/observability/secrets/promotion_radar_metrics_token
+          printf '%s' 'ci-grafana-password' > ops/observability/secrets/grafana_admin_password
+          printf '%s' 'ci-smtp-password' > ops/observability/secrets/alertmanager_smtp_password
+          printf '%s' 'ci-telegram-token' > ops/observability/secrets/alertmanager_telegram_bot_token
+          printf '%s' 'https://example.invalid/primary' > ops/observability/secrets/alertmanager_primary_webhook_url
+          printf '%s' 'https://example.invalid/secondary' > ops/observability/secrets/alertmanager_secondary_webhook_url
+          printf '%s' 'https://example.invalid/warning' > ops/observability/secrets/alertmanager_warning_webhook_url
           chmod 600 ops/observability/secrets/*
           chmod 644 ops/alertmanager/generated/alertmanager.yml
 
