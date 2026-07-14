@@ -73,14 +73,14 @@ previous_release="$(get_env_value "$STATE_FILE" RELEASE_TAG none)"
 sed -i -E "s|^RELEASE_TAG=.*|RELEASE_TAG=$TARGET_RELEASE|" "$ENV_FILE"
 export RELEASE_TAG="$TARGET_RELEASE"
 
-scripts/render-alertmanager.sh "$ENV_FILE"
+bash scripts/render-alertmanager.sh "$ENV_FILE"
 
 dc() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
 if dc ps --status running postgres --format json 2>/dev/null | grep -q .; then
-  scripts/backup-production.sh
+  bash scripts/backup-production.sh
 fi
 
 echo "Baixando imagens da release $TARGET_RELEASE..."
@@ -113,7 +113,7 @@ if [[ "$healthy" != "1" ]]; then
 
   if [[ "$previous_release" != "none" && "$previous_release" != "$TARGET_RELEASE" ]]; then
     echo "Executando rollback automático para $previous_release..." >&2
-    scripts/rollback-production.sh "$previous_release"
+    bash scripts/rollback-production.sh "$previous_release"
   fi
   exit 1
 fi
