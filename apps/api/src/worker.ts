@@ -41,7 +41,19 @@ const collectionWorker = new Worker<CollectJobData>(
 
 const dispatchWorker = new Worker<DispatchJobData>(
   DISPATCH_QUEUE_NAME,
-  processDispatchJob,
+  async (job) => {
+    try {
+      return await processDispatchJob(job);
+    } catch (error) {
+      const maxAttempts = Number(job.opts.attempts ?? 1);
+      const isFinalAttempt = job.attemptsMade + 1 >= maxAttempts;
+      if (isFinalAttempt) {
+        const normalizedError = error instanceof Error ? error : new Error('Erro desconhecido na distribuição');
+        await moveDispatchJobToDeadLetter(job, normalizedError);
+      }
+      throw error;
+    }
+  },
   { connection: queueConnection, concurrency: config.dispatchConcurrency }
 );
 
@@ -58,15 +70,9 @@ dispatchWorker.on('completed', (job, result) => {
 });
 
 dispatchWorker.on('failed', (job, error) => {
-  console.error(`[worker:dispatch] job ${job?.id} failed`, error);
-  if (!job) return;
-
-  const maxAttempts = Number(job.opts.attempts ?? 1);
-  if (job.attemptsMade < maxAttempts) return;
-
-  void moveDispatchJobToDeadLetter(job, error).catch((deadLetterError) => {
-    console.error(`[worker:dispatch] failed to move job ${job.id} to DLQ`, deadLetterError);
-  });
+  const maxAttempts = Number(job?.opts.attempts ?? 1);
+  const exhausted = Boolean(job && job.attemptsMade >= maxAttempts);
+  console.error(`[worker:dispatch] job ${job?.id} failed${exhausted ? ' and was routed to DLQ' : ''}`, error);
 });
 
 await collectOffersQueue.add('collect', {}, {
