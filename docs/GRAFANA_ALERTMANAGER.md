@@ -41,20 +41,20 @@ Crie os arquivos descritos em `ops/observability/secrets/README.md`:
 
 ```bash
 mkdir -p ops/observability/secrets
-printf '%s\n' "$METRICS_BEARER_TOKEN" > ops/observability/secrets/promotion_radar_metrics_token
-printf '%s\n' "$GRAFANA_ADMIN_PASSWORD" > ops/observability/secrets/grafana_admin_password
-printf '%s\n' "$ALERTMANAGER_SMTP_PASSWORD" > ops/observability/secrets/alertmanager_smtp_password
-printf '%s\n' "$ALERTMANAGER_TELEGRAM_BOT_TOKEN" > ops/observability/secrets/alertmanager_telegram_bot_token
-printf '%s\n' "$ALERTMANAGER_PRIMARY_WEBHOOK_URL" > ops/observability/secrets/alertmanager_primary_webhook_url
-printf '%s\n' "$ALERTMANAGER_SECONDARY_WEBHOOK_URL" > ops/observability/secrets/alertmanager_secondary_webhook_url
-printf '%s\n' "$ALERTMANAGER_WARNING_WEBHOOK_URL" > ops/observability/secrets/alertmanager_warning_webhook_url
+printf '%s' "$METRICS_BEARER_TOKEN" > ops/observability/secrets/promotion_radar_metrics_token
+printf '%s' "$GRAFANA_ADMIN_PASSWORD" > ops/observability/secrets/grafana_admin_password
+printf '%s' "$ALERTMANAGER_SMTP_PASSWORD" > ops/observability/secrets/alertmanager_smtp_password
+printf '%s' "$ALERTMANAGER_TELEGRAM_BOT_TOKEN" > ops/observability/secrets/alertmanager_telegram_bot_token
+printf '%s' "$ALERTMANAGER_PRIMARY_WEBHOOK_URL" > ops/observability/secrets/alertmanager_primary_webhook_url
+printf '%s' "$ALERTMANAGER_SECONDARY_WEBHOOK_URL" > ops/observability/secrets/alertmanager_secondary_webhook_url
+printf '%s' "$ALERTMANAGER_WARNING_WEBHOOK_URL" > ops/observability/secrets/alertmanager_warning_webhook_url
 chmod 600 ops/observability/secrets/*
 chmod 644 ops/alertmanager/generated/alertmanager.yml
 ```
 
 Os valores sensíveis são montados pelos recursos `secrets:` do Docker Compose. O arquivo `alertmanager.yml` não contém senhas ou tokens e precisa ser legível pelo usuário não-root do container.
 
-O valor de `promotion_radar_metrics_token` deve ser igual ao `METRICS_BEARER_TOKEN` da API e ter pelo menos 24 caracteres.
+Os arquivos de segredo não devem possuir quebra de linha final. O valor de `promotion_radar_metrics_token` deve ser igual ao `METRICS_BEARER_TOKEN` da API e ter pelo menos 24 caracteres.
 
 Os webhooks podem apontar para n8n, PagerDuty, Opsgenie, Slack, Microsoft Teams ou outro serviço que aceite o payload padrão do Alertmanager. Em produção, use HTTPS.
 
