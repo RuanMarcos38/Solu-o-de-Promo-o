@@ -6,16 +6,23 @@ import { prisma } from './db.js';
 import { moveDispatchJobToDeadLetter, processDispatchJob } from './dispatch.js';
 import { getStats } from './offerStore.js';
 import { publishCollectionCompleted } from './marketplaceEvents.js';
+import { operationalConfig, validateOperationalAlertConfig } from './operationalConfig.js';
+import { processOperationalAlertDelivery } from './operationalAlerts.js';
 import {
   COLLECT_QUEUE_NAME,
   DISPATCH_QUEUE_NAME,
+  OPERATIONAL_ALERT_QUEUE_NAME,
   connection,
   collectOffersQueue,
   dispatchDeadLetterQueue,
   dispatchOffersQueue,
   enqueueCollectionJob,
+  enqueueOperationalAlertMonitorNow,
+  operationalAlertsQueue,
   queueConnection,
-  type DispatchJobData
+  scheduleOperationalAlertMonitor,
+  type DispatchJobData,
+  type OperationalAlertQueueData
 } from './queue.js';
 import type { MarketplaceName } from './types.js';
 
@@ -57,6 +64,12 @@ const dispatchWorker = new Worker<DispatchJobData>(
   { connection: queueConnection, concurrency: config.dispatchConcurrency }
 );
 
+const operationalAlertWorker = new Worker<OperationalAlertQueueData>(
+  OPERATIONAL_ALERT_QUEUE_NAME,
+  processOperationalAlertDelivery,
+  { connection: queueConnection, concurrency: operationalConfig.concurrency }
+);
+
 collectionWorker.on('completed', (job) => {
   console.log(`[worker:collect] job ${job.id} completed`);
 });
@@ -75,6 +88,14 @@ dispatchWorker.on('failed', (job, error) => {
   console.error(`[worker:dispatch] job ${job?.id} failed${exhausted ? ' and was routed to DLQ' : ''}`, error);
 });
 
+operationalAlertWorker.on('completed', (job, result) => {
+  console.log(`[worker:operational-alert] job ${job.id} completed`, result);
+});
+
+operationalAlertWorker.on('failed', (job, error) => {
+  console.error(`[worker:operational-alert] job ${job?.id} failed`, error);
+});
+
 await collectOffersQueue.add('collect', {}, {
   jobId: 'recurring-default-collection',
   repeat: { every: config.collectIntervalSeconds * 1000 },
@@ -84,7 +105,14 @@ await collectOffersQueue.add('collect', {}, {
 
 await enqueueCollectionJob({});
 
-console.log('[worker] collection and dispatch workers running');
+if (operationalConfig.enabled) {
+  validateOperationalAlertConfig();
+  await scheduleOperationalAlertMonitor();
+  await enqueueOperationalAlertMonitorNow();
+  console.log(`[worker] operational alerts enabled for ${operationalConfig.channels.join(', ')}`);
+}
+
+console.log('[worker] collection, dispatch and operational alert workers running');
 
 let shuttingDown = false;
 
@@ -102,12 +130,14 @@ async function shutdown(signal: string) {
   try {
     await Promise.all([
       collectionWorker.close(),
-      dispatchWorker.close()
+      dispatchWorker.close(),
+      operationalAlertWorker.close()
     ]);
     await Promise.all([
       collectOffersQueue.close(),
       dispatchOffersQueue.close(),
-      dispatchDeadLetterQueue.close()
+      dispatchDeadLetterQueue.close(),
+      operationalAlertsQueue.close()
     ]);
     await prisma.$disconnect();
     if (connection.status !== 'end') await connection.quit();
