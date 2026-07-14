@@ -1,0 +1,11 @@
+; Radar de Ofertas — homologação
+; Zona: r2rmarketingdigital.com.br
+; Destino: VPS Hostinger 2.25.155.142
+; TTL inicial baixo para facilitar rollback de DNS.
+
+ofertas          300 IN A 2.25.155.142
+api-ofertas      300 IN A 2.25.155.142
+grafana-ofertas  300 IN A 2.25.155.142
+
+; NÃO alterar os registros existentes do domínio raiz, www, crm ou n8n.
+; Após 24 horas estáveis, o TTL pode ser aumentado para 3600.
