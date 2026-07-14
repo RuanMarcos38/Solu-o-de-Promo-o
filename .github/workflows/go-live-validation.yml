@@ -1,0 +1,45 @@
+name: Go-Live Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-live-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate homologation targets
+        run: node scripts/validate-go-live.mjs
+
+      - name: Validate go-live shell syntax
+        run: |
+          bash -n scripts/go-live-preflight.sh
+          bash -n scripts/go-live-smoke.sh
+          bash -n scripts/publish-homologation-release.sh
+          bash -n scripts/homologation-dr-drill.sh
+          bash -n scripts/remote-homologation-dr-drill.sh
+
+      - name: Verify documentation references
+        run: |
+          test -f deploy/homologation.env.example
+          test -f deploy/dns/r2rmarketingdigital.com.br.homologation.zone
+          test -f docs/GO_LIVE_HOMOLOGATION.md
