@@ -1,9 +1,11 @@
 import 'dotenv/config';
 import { config } from './config.js';
-import { createApp } from './application.js';
 import { prisma } from './db.js';
 import { collectOffersQueue, connection, dispatchDeadLetterQueue, dispatchOffersQueue, operationalAlertsQueue } from './queue.js';
+import { initializeOpenTelemetry, shutdownOpenTelemetry } from './telemetry.js';
 
+await initializeOpenTelemetry('api');
+const { createApp } = await import('./application.js');
 const app = await createApp();
 await app.listen({ port: config.apiPort, host: '0.0.0.0' });
 
@@ -30,6 +32,7 @@ async function shutdown(signal: string) {
     ]);
     await prisma.$disconnect();
     if (connection.status !== 'end') await connection.quit();
+    await shutdownOpenTelemetry();
     clearTimeout(forceExit);
     process.exit(0);
   } catch (error) {
