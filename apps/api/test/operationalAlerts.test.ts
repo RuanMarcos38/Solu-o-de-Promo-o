@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { after, describe, test } from 'node:test';
 import { operationalConfig } from '../src/operationalConfig.js';
 import { formatOperationalAlert, operationalAlertStatus } from '../src/operationalAlerts.js';
-import { connection, operationalAlertsQueue, type OperationalAlert } from '../src/queue.js';
+import {
+  collectOffersQueue,
+  connection,
+  dispatchDeadLetterQueue,
+  dispatchOffersQueue,
+  operationalAlertsQueue,
+  type OperationalAlert
+} from '../src/queue.js';
 
 const alert: OperationalAlert = {
   kind: 'dlq-threshold',
@@ -15,7 +22,12 @@ const alert: OperationalAlert = {
 };
 
 after(async () => {
-  await operationalAlertsQueue.close();
+  await Promise.all([
+    collectOffersQueue.close(),
+    dispatchOffersQueue.close(),
+    dispatchDeadLetterQueue.close(),
+    operationalAlertsQueue.close()
+  ]);
   if (connection.status !== 'end') await connection.quit();
 });
 
