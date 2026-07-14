@@ -24,7 +24,7 @@ check_status() {
   local url="$1"
   local expected="$2"
   local code
-  code="$(curl -ksS -o /dev/null -w '%{http_code}' "$url" || true)"
+  code="$(curl -sS -o /dev/null -w '%{http_code}' "$url" || true)"
   if [[ "$code" == "$expected" ]]; then
     pass "$url retornou HTTP $expected"
   else
@@ -36,7 +36,7 @@ check_header() {
   local url="$1"
   local header="$2"
   local pattern="$3"
-  if curl -ksSI "$url" | tr -d '\r' | grep -Ei "^${header}:.*${pattern}" >/dev/null; then
+  if curl -sSI "$url" | tr -d '\r' | grep -Ei "^${header}:.*${pattern}" >/dev/null; then
     pass "$url contém $header"
   else
     fail "$url não contém $header esperado"
@@ -60,7 +60,7 @@ check_header "https://${APP_DOMAIN}/" "Strict-Transport-Security" "max-age="
 check_header "https://${APP_DOMAIN}/" "X-Content-Type-Options" "nosniff"
 check_header "https://${APP_DOMAIN}/" "Referrer-Policy" "strict-origin"
 
-cors_headers="$(curl -ksSI -X OPTIONS \
+cors_headers="$(curl -sSI -X OPTIONS \
   -H "Origin: https://${APP_DOMAIN}" \
   -H 'Access-Control-Request-Method: GET' \
   "https://${API_DOMAIN}/offers" | tr -d '\r')"
@@ -71,7 +71,14 @@ else
 fi
 
 if command -v openssl >/dev/null 2>&1; then
-  expiry="$(echo | openssl s_client -servername "$APP_DOMAIN" -connect "$APP_DOMAIN:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2-)"
+  certificate="$(echo | openssl s_client -verify_return_error -servername "$APP_DOMAIN" -connect "$APP_DOMAIN:443" 2>/dev/null || true)"
+  if grep -q 'Verify return code: 0 (ok)' <<<"$certificate"; then
+    pass "Cadeia TLS validada por uma autoridade confiável"
+  else
+    fail "A cadeia TLS não foi validada"
+  fi
+
+  expiry="$(openssl x509 -noout -enddate 2>/dev/null <<<"$certificate" | cut -d= -f2-)"
   if [[ -n "$expiry" ]]; then
     expiry_epoch="$(date -d "$expiry" +%s)"
     now_epoch="$(date +%s)"
@@ -82,11 +89,11 @@ if command -v openssl >/dev/null 2>&1; then
       fail "Certificado TLS expira em $remaining_days dia(s)"
     fi
   else
-    fail "Não foi possível ler o certificado TLS"
+    fail "Não foi possível ler a validade do certificado TLS"
   fi
 fi
 
-socket_response="$(curl -ksS "https://${API_DOMAIN}/socket.io/?EIO=4&transport=polling" || true)"
+socket_response="$(curl -sS "https://${API_DOMAIN}/socket.io/?EIO=4&transport=polling" || true)"
 if [[ "$socket_response" == 0* ]]; then
   pass "Handshake Socket.IO disponível"
 else
