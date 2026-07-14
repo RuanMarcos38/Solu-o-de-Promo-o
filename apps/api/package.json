@@ -10,6 +10,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/start.js",
     "start:worker": "node dist/worker.js",
+    "retry:dlq": "tsx src/retryDeadLetter.ts",
+    "retry:dlq:prod": "node dist/retryDeadLetter.js",
     "prisma:generate": "node scripts/prisma-generate.cjs",
     "prisma:migrate": "node scripts/prisma-migrate.cjs",
     "prisma:deploy": "prisma migrate deploy",
