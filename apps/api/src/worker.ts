@@ -5,7 +5,7 @@ import { runCollection } from './collector.js';
 import { prisma } from './db.js';
 import { getStats } from './offerStore.js';
 import { publishCollectionCompleted } from './marketplaceEvents.js';
-import { connection, collectOffersQueue, enqueueCollectionJob } from './queue.js';
+import { connection, collectOffersQueue, enqueueCollectionJob, queueConnection } from './queue.js';
 import type { MarketplaceName } from './types.js';
 
 type CollectJobData = {
@@ -25,7 +25,7 @@ const worker = new Worker<CollectJobData>(
       stats
     };
   },
-  { connection, concurrency: 3 }
+  { connection: queueConnection, concurrency: 3 }
 );
 
 worker.on('completed', (job) => {
