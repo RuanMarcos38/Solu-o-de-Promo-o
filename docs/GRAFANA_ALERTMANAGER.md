@@ -48,11 +48,12 @@ printf '%s' "$ALERTMANAGER_TELEGRAM_BOT_TOKEN" > ops/observability/secrets/alert
 printf '%s' "$ALERTMANAGER_PRIMARY_WEBHOOK_URL" > ops/observability/secrets/alertmanager_primary_webhook_url
 printf '%s' "$ALERTMANAGER_SECONDARY_WEBHOOK_URL" > ops/observability/secrets/alertmanager_secondary_webhook_url
 printf '%s' "$ALERTMANAGER_WARNING_WEBHOOK_URL" > ops/observability/secrets/alertmanager_warning_webhook_url
-chmod 600 ops/observability/secrets/*
+chmod 700 ops/observability/secrets
+chmod 644 ops/observability/secrets/*
 chmod 644 ops/alertmanager/generated/alertmanager.yml
 ```
 
-Os valores sensíveis são montados pelos recursos `secrets:` do Docker Compose. O arquivo `alertmanager.yml` não contém senhas ou tokens e precisa ser legível pelo usuário não-root do container.
+Os valores sensíveis são montados pelos recursos `secrets:` do Docker Compose. Como secrets com origem em arquivo usam bind mount no Compose local, o diretório fica restrito ao proprietário e os arquivos ficam legíveis pelos usuários não-root dos containers, sempre montados somente para leitura.
 
 Os arquivos de segredo não devem possuir quebra de linha final. O valor de `promotion_radar_metrics_token` deve ser igual ao `METRICS_BEARER_TOKEN` da API e ter pelo menos 24 caracteres.
 
