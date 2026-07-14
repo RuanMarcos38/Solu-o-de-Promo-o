@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Worker } from 'bullmq';
 import { config } from './config.js';
 import { runCollection } from './collector.js';
+import { prisma } from './db.js';
 import { getStats } from './offerStore.js';
 import { publishCollectionCompleted } from './marketplaceEvents.js';
 import { connection, collectOffersQueue, enqueueCollectionJob } from './queue.js';
@@ -45,3 +46,32 @@ await collectOffersQueue.add('collect', {}, {
 await enqueueCollectionJob({});
 
 console.log('[worker] collection worker running');
+
+let shuttingDown = false;
+
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[worker] shutting down after ${signal}`);
+
+  const forceExit = setTimeout(() => {
+    console.error('[worker] forced shutdown after timeout');
+    process.exit(1);
+  }, 20_000);
+  forceExit.unref();
+
+  try {
+    await worker.close();
+    await collectOffersQueue.close();
+    await prisma.$disconnect();
+    if (connection.status !== 'end') await connection.quit();
+    clearTimeout(forceExit);
+    process.exit(0);
+  } catch (error) {
+    console.error('[worker] graceful shutdown failed', error);
+    process.exit(1);
+  }
+}
+
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
+process.once('SIGINT', () => void shutdown('SIGINT'));
