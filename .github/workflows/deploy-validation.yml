@@ -1,0 +1,105 @@
+name: Deploy Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Static deployment validation
+        run: node scripts/validate-deploy.mjs
+
+      - name: Shell syntax validation
+        run: |
+          bash -n scripts/lib/env-file.sh
+          bash -n scripts/prepare-production.sh
+          bash -n scripts/render-alertmanager.sh
+          bash -n scripts/deploy-production.sh
+          bash -n scripts/rollback-production.sh
+          bash -n scripts/backup-production.sh
+          bash -n scripts/restore-production.sh
+
+      - name: Prepare validation fixtures
+        run: |
+          cp .env.production.example .env.production
+          sed -i 's/^RELEASE_TAG=.*/RELEASE_TAG=ci-validation/' .env.production
+          cat > .env.production.secrets <<'EOF'
+          POSTGRES_PASSWORD=ci-postgres-password
+          REDIS_PASSWORD=ci-redis-password
+          DATABASE_URL=postgresql://promo:ci-postgres-password@postgres:5432/promo_db?schema=public
+          REDIS_URL=redis://:ci-redis-password@redis:6379
+          JWT_SECRET=ci-jwt-secret-with-more-than-thirty-two-characters
+          CHANNEL_CONFIG_ENCRYPTION_KEY=BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+          ADMIN_PASSWORD=ci-admin-password
+          METRICS_BEARER_TOKEN=ci-metrics-token-with-more-than-24-characters
+          OPERATIONAL_ALERT_TELEGRAM_BOT_TOKEN=ci-telegram-token
+          OPERATIONAL_ALERT_WEBHOOK_URL=https://hooks.example.net/app
+          OPERATIONAL_ALERT_WEBHOOK_SECRET=ci-webhook-signing-value
+          SMTP_PASS=ci-smtp-password
+          EOF
+          mkdir -p deploy/secrets ops/alertmanager/generated
+          printf '%s' 'ci-metrics-token-with-more-than-24-characters' > deploy/secrets/promotion_radar_metrics_token
+          printf '%s' 'ci-grafana-password' > deploy/secrets/grafana_admin_password
+          printf '%s' 'ci-oauth-client-secret' > deploy/secrets/grafana_oauth_client_secret
+          printf '%s' 'ci-smtp-password' > deploy/secrets/alertmanager_smtp_password
+          printf '%s' 'ci-telegram-token' > deploy/secrets/alertmanager_telegram_bot_token
+          printf '%s' 'https://hooks.example.net/primary' > deploy/secrets/alertmanager_primary_webhook_url
+          printf '%s' 'https://hooks.example.net/secondary' > deploy/secrets/alertmanager_secondary_webhook_url
+          printf '%s' 'https://hooks.example.net/warning' > deploy/secrets/alertmanager_warning_webhook_url
+          chmod 700 deploy/secrets
+          chmod 644 deploy/secrets/*
+          chmod 600 .env.production .env.production.secrets
+          bash scripts/render-alertmanager.sh .env.production
+
+      - name: Production compose validation
+        run: docker compose --env-file .env.production -f compose.production.yml config --quiet
+
+      - name: Caddy configuration validation
+        run: >-
+          docker run --rm
+          -e APP_DOMAIN=ofertas.example.net
+          -e API_DOMAIN=api.ofertas.example.net
+          -e GRAFANA_DOMAIN=grafana.ofertas.example.net
+          -e TLS_EMAIL=admin@example.net
+          -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
+          caddy:2-alpine
+          caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Alertmanager configuration validation
+        run: >-
+          docker run --rm
+          -v "$PWD/ops/alertmanager:/etc/alertmanager:ro"
+          -v "$PWD/deploy/secrets:/run/secrets:ro"
+          --entrypoint /bin/amtool
+          prom/alertmanager:v0.33.1
+          check-config /etc/alertmanager/generated/alertmanager.yml
+
+      - name: Prometheus configuration validation
+        run: >-
+          docker run --rm
+          -v "$PWD/ops/prometheus:/etc/prometheus:ro"
+          -v "$PWD/deploy/secrets:/run/secrets:ro"
+          --entrypoint /bin/promtool
+          prom/prometheus:v3.13.1
+          check config /etc/prometheus/prometheus.example.yml
