@@ -75,7 +75,7 @@ jobs:
       - name: Production compose validation
         run: docker compose --env-file .env.production -f compose.production.yml config --quiet
 
-      - name: Caddy configuration validation
+      - name: Caddyfile adaptation validation
         run: >-
           docker run --rm
           -e APP_DOMAIN=ofertas.example.net
@@ -84,7 +84,7 @@ jobs:
           -e TLS_EMAIL=admin@example.net
           -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
           caddy:2-alpine
-          validate --config /etc/caddy/Caddyfile
+          adapt --config /etc/caddy/Caddyfile --adapter caddyfile --pretty
 
       - name: Alertmanager configuration validation
         run: >-
