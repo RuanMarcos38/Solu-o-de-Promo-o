@@ -10,14 +10,27 @@ on:
 jobs:
   docker-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare env
-        run: cp .env.example .env
+      - name: Prepare env and observability fixtures
+        run: |
+          cp .env.example .env
+          sed -i 's/^METRICS_BEARER_TOKEN=.*/METRICS_BEARER_TOKEN=ci-metrics-token-with-more-than-24-characters/' .env
+          mkdir -p ops/alertmanager/generated ops/observability/secrets
+          cp ops/alertmanager/alertmanager.example.yml ops/alertmanager/generated/alertmanager.yml
+          printf '%s\n' 'ci-metrics-token-with-more-than-24-characters' > ops/observability/secrets/promotion_radar_metrics_token
+          printf '%s\n' 'ci-grafana-password' > ops/observability/secrets/grafana_admin_password
+          printf '%s\n' 'ci-smtp-password' > ops/observability/secrets/alertmanager_smtp_password
+          printf '%s\n' 'ci-telegram-token' > ops/observability/secrets/alertmanager_telegram_bot_token
+          printf '%s\n' 'https://example.invalid/primary' > ops/observability/secrets/alertmanager_primary_webhook_url
+          printf '%s\n' 'https://example.invalid/secondary' > ops/observability/secrets/alertmanager_secondary_webhook_url
+          printf '%s\n' 'https://example.invalid/warning' > ops/observability/secrets/alertmanager_warning_webhook_url
+          chmod 600 ops/observability/secrets/* ops/alertmanager/generated/alertmanager.yml
 
       - name: Build API image
         run: docker compose build api
@@ -73,6 +86,38 @@ jobs:
       - name: Public API smoke test
         run: node scripts/smoke-public.mjs
 
+      - name: Start observability stack
+        run: docker compose --profile observability up -d alertmanager prometheus grafana
+
+      - name: Wait for observability health
+        run: |
+          for i in {1..40}; do
+            if curl -fsS http://localhost:9093/-/ready \
+              && curl -fsS http://localhost:9090/-/ready \
+              && curl -fsS http://localhost:3000/api/health; then
+              exit 0
+            fi
+            sleep 3
+          done
+          docker compose --profile observability logs alertmanager prometheus grafana
+          exit 1
+
+      - name: Prometheus scrape smoke test
+        run: |
+          curl -fsS 'http://localhost:9090/api/v1/query?query=promotion_radar_service_info' > prometheus-query.json
+          grep -q '"status":"success"' prometheus-query.json
+          grep -q 'promotion-radar' prometheus-query.json
+
+      - name: Grafana dashboard provisioning smoke test
+        run: |
+          curl -fsS -u 'admin:ci-grafana-password' 'http://localhost:3000/api/search?query=Radar' > grafana-search.json
+          grep -q 'promotion-radar-overview' grafana-search.json
+          grep -q 'promotion-radar-slo' grafana-search.json
+
       - name: Logs on failure
         if: failure()
-        run: docker compose logs
+        run: docker compose --profile observability logs
+
+      - name: Cleanup
+        if: always()
+        run: docker compose --profile observability down -v
