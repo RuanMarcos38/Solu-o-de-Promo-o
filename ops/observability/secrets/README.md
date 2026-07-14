@@ -12,10 +12,13 @@ Arquivos esperados:
 - `alertmanager_secondary_webhook_url`
 - `alertmanager_warning_webhook_url`
 
-Cada arquivo deve conter apenas o valor, seguido opcionalmente de uma quebra de linha. Use permissões restritas:
+Cada arquivo deve conter somente o valor, sem quebra de linha final. Exemplo:
 
 ```bash
+printf '%s' "$METRICS_BEARER_TOKEN" > ops/observability/secrets/promotion_radar_metrics_token
 chmod 600 ops/observability/secrets/*
 ```
+
+Evite `echo` ou `printf '%s\n'`: a quebra de linha pode fazer parte da credencial lida pelo Prometheus, Grafana ou Alertmanager.
 
 Nunca faça commit desses arquivos. Os webhooks de produção devem utilizar HTTPS.
