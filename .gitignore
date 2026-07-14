@@ -25,10 +25,10 @@ coverage
 # nyc test coverage
 .nyc_output
 
-# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-the-task-response)
+# Grunt intermediate storage (https://gruntjs.com/creating-the-task-response)
 .grunt
 
-# Bower dependency directory (https://bower.io/)
+# Bower dependency directory
 bower_components
 
 # node-waf configuration
@@ -68,6 +68,7 @@ web_modules/
 !.env.production.example
 .env.production
 .env.production.secrets
+deploy/homologation.env
 
 # Production runtime state and credentials
 .deploy/
