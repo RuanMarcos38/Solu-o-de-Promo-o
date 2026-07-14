@@ -1,0 +1,82 @@
+{
+  "uid": "promotion-radar-slo",
+  "title": "Radar de Ofertas — SLO & Incidentes",
+  "tags": ["promotion-radar", "slo", "incidents"],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-24h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Burn rate API — 5m",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "promotion-radar-prometheus"},
+      "targets": [{"refId": "A", "expr": "promotion_radar:slo_api_availability:error_budget_burn_rate5m", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 2}, {"color": "red", "value": 14.4}]}}, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"], "values": false}}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Burn rate API — 1h",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "promotion-radar-prometheus"},
+      "targets": [{"refId": "A", "expr": "promotion_radar:slo_api_availability:error_budget_burn_rate1h", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 2}, {"color": "red", "value": 14.4}]}}, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"], "values": false}}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Alertas críticos ativos",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "promotion-radar-prometheus"},
+      "targets": [{"refId": "A", "expr": "count(ALERTS{service=\"promotion-radar\",severity=\"critical\",alertstate=\"firing\"})", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"], "values": false}}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "DLQ",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "promotion-radar-prometheus"},
+      "targets": [{"refId": "A", "expr": "promotion_radar_dispatch_dlq_items", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"], "values": false}}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Disponibilidade da API",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 9},
+      "datasource": {"type": "prometheus", "uid": "promotion-radar-prometheus"},
+      "targets": [{"refId": "A", "expr": "promotion_radar:sli_api_availability:ratio_rate5m", "legendFormat": "5m"}, {"refId": "B", "expr": "promotion_radar:sli_api_availability:ratio_rate1h", "legendFormat": "1h"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 0.999}]}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Sucesso por canal",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 9},
+      "datasource": {"type": "prometheus", "uid": "promotion-radar-prometheus"},
+      "targets": [{"refId": "A", "expr": "promotion_radar:sli_dispatch_success:ratio_rate15m", "legendFormat": "{{channel}}"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 0.98}]}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 7,
+      "type": "state-timeline",
+      "title": "Linha do tempo de incidentes",
+      "gridPos": {"x": 0, "y": 13, "w": 24, "h": 9},
+      "datasource": {"type": "prometheus", "uid": "promotion-radar-prometheus"},
+      "targets": [{"refId": "A", "expr": "ALERTS{service=\"promotion-radar\"}", "legendFormat": "{{alertname}} · {{severity}}"}],
+      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"mergeValues": true, "showValue": "auto"}
+    }
+  ]
+}
