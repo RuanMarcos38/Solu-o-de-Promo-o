@@ -121,7 +121,7 @@ jobs:
       CHANNEL_CONFIG_ENCRYPTION_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
       ALLOW_INSECURE_OUTBOUND_HTTP: "false"
       COLLECT_INTERVAL_SECONDS: "3600"
-      NODE_V8_COVERAGE: coverage
+      NODE_V8_COVERAGE: ${{ github.workspace }}/coverage
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout
@@ -149,6 +149,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: api-v8-coverage
-          path: apps/api/coverage
-          if-no-files-found: warn
+          path: coverage
+          if-no-files-found: error
           retention-days: 14
