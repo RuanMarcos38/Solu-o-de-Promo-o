@@ -38,8 +38,17 @@ jobs:
           bash -n scripts/homologation-dr-drill.sh
           bash -n scripts/remote-homologation-dr-drill.sh
 
+      - name: Verify protected deployment workflow
+        run: |
+          grep -q 'environment: homologation' .github/workflows/deploy-homologation.yml
+          grep -q 'secrets.VPS_SSH_PRIVATE_KEY' .github/workflows/deploy-homologation.yml
+          grep -q 'secrets.VPS_SSH_KNOWN_HOSTS' .github/workflows/deploy-homologation.yml
+          grep -q 'scripts/deploy-production.sh' .github/workflows/deploy-homologation.yml
+          grep -q 'scripts/go-live-smoke.sh' .github/workflows/deploy-homologation.yml
+
       - name: Verify documentation references
         run: |
           test -f deploy/homologation.env.example
           test -f deploy/dns/r2rmarketingdigital.com.br.homologation.zone
           test -f docs/GO_LIVE_HOMOLOGATION.md
+          test -f docs/SECRETS_CONFIGURATION.md
