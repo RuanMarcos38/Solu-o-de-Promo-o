@@ -7,13 +7,25 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  node-verify:
+  quality:
+    name: Typecheck, unit tests and build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
-      DATABASE_URL: postgresql://promo:promo@localhost:5432/promo_db?schema=public
+      NODE_ENV: test
+      DATABASE_URL: postgresql://promo:promo@localhost:5432/promo_test?schema=public
       REDIS_URL: redis://localhost:6379
-      JWT_SECRET: ci-secret
+      JWT_SECRET: test-jwt-secret-with-at-least-32-characters
+      CHANNEL_CONFIG_ENCRYPTION_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+      BOOTSTRAP_ADMIN_ENABLED: "false"
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout
@@ -23,6 +35,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
         run: npm install --loglevel=error
@@ -36,8 +49,91 @@ jobs:
       - name: Web typecheck
         run: npm run lint -w apps/web
 
+      - name: Unit tests
+        run: npm run test:unit -w apps/api
+
       - name: API build
         run: npm run build -w apps/api
 
       - name: Web build
         run: npm run build -w apps/web
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+  integration:
+    name: Integration tests and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: quality
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: promo
+          POSTGRES_PASSWORD: promo
+          POSTGRES_DB: promo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U promo -d promo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://promo:promo@localhost:5432/promo_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test-jwt-secret-with-at-least-32-characters
+      JWT_EXPIRES_IN: 15m
+      JWT_ISSUER: promotion-radar-api-test
+      JWT_AUDIENCE: promotion-radar-web-test
+      FRONTEND_ORIGINS: http://localhost:5173
+      BOOTSTRAP_ADMIN_ENABLED: "true"
+      ADMIN_NAME: Administrador de Teste
+      ADMIN_EMAIL: admin@test.local
+      ADMIN_PASSWORD: TestAdminPassword123!
+      CHANNEL_CONFIG_ENCRYPTION_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+      ALLOW_INSECURE_OUTBOUND_HTTP: "false"
+      COLLECT_INTERVAL_SECONDS: "3600"
+      NODE_V8_COVERAGE: coverage
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --loglevel=error
+
+      - name: Prisma generate
+        run: npm run db:generate
+
+      - name: Apply migrations
+        run: npm run prisma:deploy -w apps/api
+
+      - name: Integration tests with coverage
+        run: npm run test:coverage -w apps/api
+
+      - name: Upload V8 coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-v8-coverage
+          path: apps/api/coverage
+          if-no-files-found: warn
+          retention-days: 14
