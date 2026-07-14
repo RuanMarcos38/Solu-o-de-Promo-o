@@ -124,7 +124,16 @@ export async function enqueueDeadLetterJob(data: DispatchDeadLetterData) {
   const jobId = `dlq-${data.originalJobId}`;
   const existing = await dispatchDeadLetterQueue.getJob(jobId);
   if (existing) return existing;
-  return dispatchDeadLetterQueue.add('dead-letter', data, { jobId });
+  const job = await dispatchDeadLetterQueue.add('dead-letter', data, { jobId });
+  if (operationalConfig.enabled) {
+    try {
+      const { queueDeadLetterOperationalAlert } = await import('./operationalAlerts.js');
+      await queueDeadLetterOperationalAlert(data, String(job.id));
+    } catch (error) {
+      console.error('[operational-alerts] failed to queue DLQ notification', error);
+    }
+  }
+  return job;
 }
 
 export async function enqueueOperationalAlert(alert: OperationalAlert) {
