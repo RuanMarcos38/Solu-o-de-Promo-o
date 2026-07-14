@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
-import { after, describe, test } from 'node:test';
+import { describe, test } from 'node:test';
 import {
   buildDispatchIdempotencyKey,
   formatOfferMessage,
   offerMatchesAlert,
   type AlertForMatch,
   type OfferForDispatch
-} from '../src/dispatch.js';
-import { collectOffersQueue, connection, dispatchDeadLetterQueue, dispatchOffersQueue } from '../src/queue.js';
+} from '../src/dispatchRules.js';
 
 const offer: OfferForDispatch = {
   id: 'offer-1',
@@ -30,15 +29,6 @@ function alert(overrides: Partial<AlertForMatch> = {}): AlertForMatch {
     ...overrides
   };
 }
-
-after(async () => {
-  await Promise.all([
-    collectOffersQueue.disconnect(),
-    dispatchOffersQueue.disconnect(),
-    dispatchDeadLetterQueue.disconnect()
-  ]);
-  connection.disconnect();
-});
 
 describe('distribuição', () => {
   test('combina palavra-chave, marketplace, desconto e preço máximo', () => {
