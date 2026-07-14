@@ -57,8 +57,25 @@ jobs:
       - name: Web build
         run: npm run build -w apps/web
 
-      - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=high
+      - name: Capture production dependency audit
+        run: |
+          set +e
+          npm audit --omit=dev --audit-level=high --json > npm-audit.json
+          echo $? > npm-audit-exit-code.txt
+          exit 0
+
+      - name: Upload dependency audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-production-audit
+          path: |
+            npm-audit.json
+            npm-audit-exit-code.txt
+          retention-days: 14
+
+      - name: Fail on high dependency vulnerabilities
+        run: test "$(cat npm-audit-exit-code.txt)" = "0"
 
   integration:
     name: Integration tests and coverage
