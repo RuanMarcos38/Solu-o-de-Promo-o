@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  buildDispatchIdempotencyKey,
   formatOfferMessage,
   offerMatchesAlert,
   type AlertForMatch,
@@ -56,5 +57,19 @@ describe('distribuição', () => {
     assert.match(message, /Score: 92/);
     assert.match(message, /https:\/\/example\.com\/affiliate/);
     assert.equal(message.includes(offer.productUrl), false);
+  });
+
+  test('gera chave idempotente estável por oferta, canal e versão comercial', () => {
+    const first = buildDispatchIdempotencyKey(offer, 'channel-1');
+    const duplicate = buildDispatchIdempotencyKey({ ...offer }, 'channel-1');
+    const priceChanged = buildDispatchIdempotencyKey({ ...offer, currentPrice: 1999.9 }, 'channel-1');
+    const scoreChanged = buildDispatchIdempotencyKey({ ...offer, score: 96 }, 'channel-1');
+    const otherChannel = buildDispatchIdempotencyKey(offer, 'channel-2');
+
+    assert.equal(first, duplicate);
+    assert.notEqual(first, priceChanged);
+    assert.notEqual(first, scoreChanged);
+    assert.notEqual(first, otherChannel);
+    assert.match(first, /^[a-f0-9]{64}$/);
   });
 });
