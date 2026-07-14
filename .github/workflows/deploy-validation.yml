@@ -84,7 +84,7 @@ jobs:
           -e TLS_EMAIL=admin@example.net
           -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
           caddy:2-alpine
-          caddy validate --config /etc/caddy/Caddyfile
+          validate --config /etc/caddy/Caddyfile
 
       - name: Alertmanager configuration validation
         run: >-
