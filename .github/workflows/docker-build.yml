@@ -31,7 +31,8 @@ jobs:
           printf '%s\n' 'https://example.invalid/primary' > ops/observability/secrets/alertmanager_primary_webhook_url
           printf '%s\n' 'https://example.invalid/secondary' > ops/observability/secrets/alertmanager_secondary_webhook_url
           printf '%s\n' 'https://example.invalid/warning' > ops/observability/secrets/alertmanager_warning_webhook_url
-          chmod 600 ops/observability/secrets/* ops/alertmanager/generated/alertmanager.yml
+          chmod 600 ops/observability/secrets/*
+          chmod 644 ops/alertmanager/generated/alertmanager.yml
 
       - name: Build API image
         run: docker compose build api
