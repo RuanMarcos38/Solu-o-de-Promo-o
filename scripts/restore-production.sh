@@ -5,6 +5,9 @@ BACKUP_PATH="${1:-}"
 ENV_FILE="${ENV_FILE:-.env.production}"
 COMPOSE_FILE="${COMPOSE_FILE:-compose.production.yml}"
 
+# shellcheck source=scripts/lib/env-file.sh
+source scripts/lib/env-file.sh
+
 if [[ -z "$BACKUP_PATH" || ! -d "$BACKUP_PATH" ]]; then
   echo "Uso: RESTORE_CONFIRM=RESTORE_PRODUCTION $0 <diretorio-do-backup>" >&2
   exit 1
@@ -15,7 +18,7 @@ if [[ "${RESTORE_CONFIRM:-}" != "RESTORE_PRODUCTION" ]]; then
   exit 1
 fi
 
-for file in postgres.dump redis.rdb SHA256SUMS; do
+for file in postgres.dump redis.rdb metadata.env SHA256SUMS; do
   if [[ ! -f "$BACKUP_PATH/$file" ]]; then
     echo "Arquivo ausente no backup: $file" >&2
     exit 1
@@ -32,10 +35,10 @@ if [[ ! -f "$ENV_FILE" || ! -f .env.production.secrets ]]; then
   exit 1
 fi
 
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
+APP_DOMAIN="$(require_env_value "$ENV_FILE" APP_DOMAIN)"
+API_DOMAIN="$(require_env_value "$ENV_FILE" API_DOMAIN)"
+DEPLOY_HEALTHCHECK_ATTEMPTS="$(get_env_value "$ENV_FILE" DEPLOY_HEALTHCHECK_ATTEMPTS 30)"
+DEPLOY_HEALTHCHECK_INTERVAL_SECONDS="$(get_env_value "$ENV_FILE" DEPLOY_HEALTHCHECK_INTERVAL_SECONDS 5)"
 
 dc() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
@@ -48,7 +51,7 @@ dc stop worker api web
 
 echo "Restaurando PostgreSQL..."
 dc up -d postgres
-dc exec -T postgres sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" dropdb --if-exists -U "$POSTGRES_USER" "$POSTGRES_DB" && PGPASSWORD="$POSTGRES_PASSWORD" createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+dc exec -T postgres sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" dropdb --if-exists --maintenance-db=postgres -U "$POSTGRES_USER" "$POSTGRES_DB" && PGPASSWORD="$POSTGRES_PASSWORD" createdb --maintenance-db=postgres -U "$POSTGRES_USER" "$POSTGRES_DB"'
 dc exec -T postgres sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-privileges' < "$absolute_backup/postgres.dump"
 
 echo "Restaurando Redis..."
@@ -60,13 +63,13 @@ echo "Validando schema e reiniciando serviços..."
 dc run --rm migrate
 dc up -d api worker web alertmanager prometheus grafana caddy
 
-for _ in {1..30}; do
+for ((i=1; i<=DEPLOY_HEALTHCHECK_ATTEMPTS; i++)); do
   if curl -fsS "https://${API_DOMAIN}/ready" >/dev/null \
     && curl -fsS "https://${APP_DOMAIN}/" >/dev/null; then
     echo "Restauração concluída com sucesso."
     exit 0
   fi
-  sleep 5
+  sleep "$DEPLOY_HEALTHCHECK_INTERVAL_SECONDS"
 done
 
 echo "Dados restaurados, mas a aplicação não passou no healthcheck." >&2
