@@ -1,5 +1,7 @@
 import { DispatchStatus } from '@prisma/client';
 import { prisma } from './db.js';
+import { fetchExternal } from './http.js';
+import { decryptChannelConfig } from './secrets.js';
 
 type ChannelConfig = Record<string, any>;
 type OfferForDispatch = {
@@ -58,7 +60,7 @@ async function sendTelegram(config: ChannelConfig, message: string) {
   const chatId = config.chatId || process.env.TELEGRAM_CHANNEL_ID;
   if (!botToken || !chatId) throw new Error('Telegram sem botToken/chatId');
 
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+  const response = await fetchExternal(`https://api.telegram.org/bot${encodeURIComponent(String(botToken))}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, text: message, disable_web_page_preview: false })
@@ -69,8 +71,11 @@ async function sendTelegram(config: ChannelConfig, message: string) {
 
 async function sendWebhook(config: ChannelConfig, payload: unknown) {
   if (!config.url) throw new Error('Webhook sem URL');
-  const response = await fetch(config.url, {
-    method: config.method || 'POST',
+  const method = String(config.method || 'POST').toUpperCase();
+  if (!['POST', 'PUT', 'PATCH'].includes(method)) throw new Error('Método de webhook não permitido');
+
+  const response = await fetchExternal(String(config.url), {
+    method,
     headers: { 'Content-Type': 'application/json', ...(config.headers || {}) },
     body: JSON.stringify(payload)
   });
@@ -84,7 +89,7 @@ async function sendEvolutionWhatsapp(config: ChannelConfig, message: string) {
   const number = config.number || config.to || process.env.WHATSAPP_DEFAULT_TO;
   if (!baseUrl || !apiKey || !instanceName || !number) throw new Error('Evolution API sem baseUrl/apiKey/instanceName/number');
 
-  const response = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
+  const response = await fetchExternal(`${baseUrl}/message/sendText/${encodeURIComponent(String(instanceName))}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: String(apiKey) },
     body: JSON.stringify({ number, text: message })
@@ -104,7 +109,7 @@ async function sendWhatsapp(config: ChannelConfig, message: string, offer: Offer
   const to = config.to || process.env.WHATSAPP_DEFAULT_TO;
   if (!url || !to) throw new Error('WhatsApp sem URL/destinatário');
 
-  const response = await fetch(url, {
+  const response = await fetchExternal(String(url), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -137,11 +142,11 @@ export async function dispatchOffer(offer: OfferForDispatch) {
 
   for (const channel of channels) {
     try {
-      const config = channel.config as ChannelConfig;
-      if (channel.type === 'telegram') await sendTelegram(config, message);
-      else if (channel.type === 'whatsapp') await sendWhatsapp(config, message, offer);
-      else if (channel.type === 'evolution') await sendEvolutionWhatsapp(config, message);
-      else if (channel.type === 'webhook') await sendWebhook(config, { message, offer, matchedAlerts: matchedAlerts.map((alert) => alert.name) });
+      const channelConfig = decryptChannelConfig(channel.config) as ChannelConfig;
+      if (channel.type === 'telegram') await sendTelegram(channelConfig, message);
+      else if (channel.type === 'whatsapp') await sendWhatsapp(channelConfig, message, offer);
+      else if (channel.type === 'evolution') await sendEvolutionWhatsapp(channelConfig, message);
+      else if (channel.type === 'webhook') await sendWebhook(channelConfig, { message, offer, matchedAlerts: matchedAlerts.map((alert) => alert.name) });
       else throw new Error(`Canal não suportado: ${channel.type}`);
 
       await prisma.dispatchLog.create({
