@@ -265,6 +265,29 @@ Veja os guias:
 - `docs/GO_LIVE_CHECKLIST.md` — checklist final antes de publicar.
 - `docs/DEPLOY_PRODUCTION.md` — guia geral de produção.
 - `docs/EASYPANEL_DEPLOY.md` — passo a passo para EasyPanel.
+- `docs/DEPLOY_DEVOPS.md` — deploy endurecido com Caddy, TLS automático, domínios, GHCR, SSO do Grafana, backups e rollback.
+- `docs/GO_LIVE_HOMOLOGATION.md` — homologação real na VPS Hostinger, publicação da primeira release e drill de disaster recovery.
+- `docs/SECRETS_CONFIGURATION.md` — separação entre secrets da VPS e credenciais de deploy do GitHub Actions.
+
+## Homologação definida
+
+- VPS: `2.25.155.142`;
+- aplicação: `ofertas.r2rmarketingdigital.com.br`;
+- API: `api-ofertas.r2rmarketingdigital.com.br`;
+- Grafana: `grafana-ofertas.r2rmarketingdigital.com.br`;
+- release candidate: `v0.1.0-rc.1`.
+
+Comandos operacionais:
+
+```bash
+cp deploy/homologation.env.example deploy/homologation.env
+npm run go-live:preflight
+npm run go-live:publish
+npm run go-live:smoke
+npm run go-live:drill
+```
+
+A publicação real depende de DNS, SSH e credenciais externas. O checklist operacional está na issue #15.
 
 ## Variáveis importantes
 

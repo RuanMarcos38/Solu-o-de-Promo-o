@@ -1,0 +1,81 @@
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 'smtp.example.invalid:587'
+  smtp_from: 'alerts@example.invalid'
+  smtp_auth_username: 'alerts@example.invalid'
+  smtp_auth_password_file: /run/secrets/alertmanager_smtp_password
+  smtp_require_tls: true
+  telegram_bot_token_file: /run/secrets/alertmanager_telegram_bot_token
+
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  receiver: operations-email
+  group_by: [alertname, service, severity, slo, channel, queue]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - receiver: dlq-owner
+      matchers: ['alertname="PromotionRadarDeadLetterQueueNotEmpty"']
+      group_wait: 30s
+      group_interval: 10m
+      repeat_interval: 1h
+      continue: true
+    - receiver: primary-oncall
+      matchers: ['severity="critical"']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 30m
+      continue: true
+    - receiver: secondary-oncall
+      matchers: ['severity="critical"']
+      group_wait: 15m
+      group_interval: 15m
+      repeat_interval: 1h
+      continue: true
+    - receiver: warning-operations
+      matchers: ['severity="warning"']
+      group_wait: 5m
+      group_interval: 15m
+      repeat_interval: 4h
+
+receivers:
+  - name: operations-email
+    email_configs:
+      - to: 'oncall@example.invalid'
+        send_resolved: true
+        headers:
+          Subject: '{{ template "promotion_radar.email.subject" . }}'
+        html: '{{ template "promotion_radar.email.html" . }}'
+        text: '{{ template "promotion_radar.message" . }}'
+  - name: primary-oncall
+    webhook_configs:
+      - url_file: /run/secrets/alertmanager_primary_webhook_url
+        send_resolved: true
+        timeout: 20s
+    telegram_configs:
+      - chat_id: 1
+        send_resolved: true
+        message: '{{ template "promotion_radar.message" . }}'
+  - name: secondary-oncall
+    webhook_configs:
+      - url_file: /run/secrets/alertmanager_secondary_webhook_url
+        send_resolved: true
+        timeout: 20s
+  - name: warning-operations
+    webhook_configs:
+      - url_file: /run/secrets/alertmanager_warning_webhook_url
+        send_resolved: true
+        timeout: 20s
+  - name: dlq-owner
+    webhook_configs:
+      - url_file: /run/secrets/alertmanager_primary_webhook_url
+        send_resolved: true
+        timeout: 20s
+
+inhibit_rules:
+  - source_matchers: ['severity="critical"']
+    target_matchers: ['severity="warning"']
+    equal: [service, slo, channel, queue]

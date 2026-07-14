@@ -7,57 +7,39 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   docker-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare env
-        run: cp .env.example .env
+      - name: Run application and observability smoke test
+        run: bash scripts/ci-observability-smoke.sh
 
-      - name: Build API image
-        run: docker compose build api
-
-      - name: Build worker image
-        run: docker compose build worker
-
-      - name: Build web image
-        run: docker compose build web
-
-      - name: Build migrate image
-        run: docker compose build migrate
-
-      - name: Start dependencies
-        run: docker compose up -d postgres redis
-
-      - name: Run migrations
-        run: docker compose run --rm migrate
-
-      - name: Start services
-        run: docker compose up -d api worker
-
-      - name: Wait for API health
-        run: |
-          for i in {1..30}; do
-            if curl -fsS http://localhost:3333/health; then exit 0; fi
-            sleep 2
-          done
-          docker compose logs api
-          exit 1
-
-      - name: API healthcheck
-        run: curl -fsS http://localhost:3333/health
-
-      - name: API readiness
-        run: curl -fsS http://localhost:3333/ready
-
-      - name: Public API smoke test
-        run: node scripts/smoke-public.mjs
-
-      - name: Logs on failure
-        if: failure()
-        run: docker compose logs
+      - name: Upload observability smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observability-smoke-diagnostics
+          path: |
+            prometheus-targets.json
+            prometheus-query.json
+            prometheus-smoke-result.txt
+            grafana-search.json
+            grafana-smoke-result.txt
+            api-metrics.txt
+            worker-metrics.txt
+            observability-containers.log
+          if-no-files-found: warn
+          retention-days: 14

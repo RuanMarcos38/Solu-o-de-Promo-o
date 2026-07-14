@@ -1,0 +1,28 @@
+{{ define "promotion_radar.email.subject" }}[Radar de Ofertas][{{ .Status }}][{{ .CommonLabels.severity }}] {{ .CommonLabels.alertname }}{{ end }}
+
+{{ define "promotion_radar.message" }}
+Status: {{ .Status }}
+Severidade: {{ .CommonLabels.severity }}
+Serviço: {{ .CommonLabels.service }}
+Alerta: {{ .CommonLabels.alertname }}
+{{ range .Alerts }}
+Resumo: {{ .Annotations.summary }}
+Descrição: {{ .Annotations.description }}
+Início: {{ .StartsAt }}
+Runbook: {{ .Annotations.runbook }}
+{{ end }}
+{{ end }}
+
+{{ define "promotion_radar.email.html" }}
+<h2>Radar de Ofertas — {{ .Status }}</h2>
+<p><strong>Severidade:</strong> {{ .CommonLabels.severity }}</p>
+<p><strong>Serviço:</strong> {{ .CommonLabels.service }}</p>
+<p><strong>Alerta:</strong> {{ .CommonLabels.alertname }}</p>
+{{ range .Alerts }}
+<hr>
+<p><strong>Resumo:</strong> {{ .Annotations.summary }}</p>
+<p><strong>Descrição:</strong> {{ .Annotations.description }}</p>
+<p><strong>Início:</strong> {{ .StartsAt }}</p>
+<p><strong>Runbook:</strong> {{ .Annotations.runbook }}</p>
+{{ end }}
+{{ end }}

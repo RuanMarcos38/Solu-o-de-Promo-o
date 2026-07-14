@@ -23,7 +23,7 @@ type Stats = {
 type Source = { id: string; name: string; marketplace: string; isActive: boolean; keywords: string[] };
 type AlertRule = { id: string; name: string; isActive: boolean; keywords: string[]; minDiscountPercent: number };
 type DispatchChannel = { id: string; name: string; type: string; isActive: boolean };
-type User = { id: string; name: string; email: string; role: string; isActive: boolean };
+type User = { id: string; name: string; email: string; role: string; isActive?: boolean };
 type DispatchLog = { id: string; channel: string; status: string; error?: string; createdAt: string; offer?: { title: string; marketplace: string; currentPrice: number } | null };
 type SystemStatus = {
   status: string;
@@ -51,9 +51,10 @@ const channelExamples: Record<string, string> = {
 };
 
 export function App() {
-  const [token, setToken] = useState(() => localStorage.getItem('promo_token') ?? '');
-  const [email, setEmail] = useState('admin@promoradar.local');
-  const [password, setPassword] = useState('admin123456');
+  const [token, setToken] = useState(() => sessionStorage.getItem('promo_token') ?? '');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [offers, setOffers] = useState<Offer[]>([]);
   const [stats, setStats] = useState<Stats>({ totalOffers: 0, bestScore: 0, bestDiscount: 0, marketplaces: {} });
   const [keyword, setKeyword] = useState('iphone');
@@ -73,13 +74,29 @@ export function App() {
   const [newUserRole, setNewUserRole] = useState('VIEWER');
   const [statusMessage, setStatusMessage] = useState('');
 
+  const isAdmin = currentUser?.role === 'ADMIN';
+  const canEdit = currentUser?.role === 'ADMIN' || currentUser?.role === 'EDITOR';
+
+  function logout() {
+    sessionStorage.removeItem('promo_token');
+    setToken('');
+    setCurrentUser(null);
+    setSources([]);
+    setAlerts([]);
+    setChannels([]);
+    setUsers([]);
+    setLogs([]);
+    setSystem(null);
+  }
+
   async function apiFetch(path: string, options: RequestInit = {}) {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> | undefined) };
     if (token) headers.Authorization = `Bearer ${token}`;
     const response = await fetch(`${apiUrl}${path}`, { ...options, headers });
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `Erro HTTP ${response.status}`);
+      if (response.status === 401) logout();
+      const data = await response.json().catch(() => null) as { message?: string } | null;
+      throw new Error(data?.message || `Erro HTTP ${response.status}`);
     }
     return response;
   }
@@ -94,9 +111,11 @@ export function App() {
         body: JSON.stringify({ email, password })
       });
       if (!response.ok) throw new Error('Login inválido');
-      const data = await response.json();
-      localStorage.setItem('promo_token', data.token);
+      const data = await response.json() as { token: string; user: User };
+      sessionStorage.setItem('promo_token', data.token);
       setToken(data.token);
+      setCurrentUser(data.user);
+      setPassword('');
       setStatusMessage('Login realizado com sucesso.');
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Erro ao entrar.');
@@ -105,9 +124,15 @@ export function App() {
     }
   }
 
-  function logout() {
-    localStorage.removeItem('promo_token');
-    setToken('');
+  async function loadSessionUser() {
+    if (!token) return;
+    try {
+      const response = await apiFetch('/auth/me');
+      const data = await response.json() as { user: User };
+      setCurrentUser(data.user);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Sessão inválida.');
+    }
   }
 
   async function loadData() {
@@ -126,21 +151,36 @@ export function App() {
   }
 
   async function loadAdminData() {
-    if (!token) return;
-    const [sourcesResponse, alertsResponse, channelsResponse, usersResponse, logsResponse, systemResponse] = await Promise.all([
+    if (!token || !currentUser) return;
+
+    const [sourcesResponse, alertsResponse] = await Promise.all([
       apiFetch('/admin/sources'),
-      apiFetch('/alerts'),
-      apiFetch('/dispatch/channels'),
-      apiFetch('/admin/users'),
-      apiFetch('/dispatch/logs?limit=20'),
-      apiFetch('/admin/system')
+      apiFetch('/alerts')
     ]);
     setSources((await sourcesResponse.json()).sources ?? []);
     setAlerts((await alertsResponse.json()).alerts ?? []);
-    setChannels((await channelsResponse.json()).channels ?? []);
-    setUsers((await usersResponse.json()).users ?? []);
-    setLogs((await logsResponse.json()).logs ?? []);
-    setSystem(await systemResponse.json());
+
+    if (canEdit) {
+      const logsResponse = await apiFetch('/dispatch/logs?limit=20');
+      setLogs((await logsResponse.json()).logs ?? []);
+    } else {
+      setLogs([]);
+    }
+
+    if (isAdmin) {
+      const [channelsResponse, usersResponse, systemResponse] = await Promise.all([
+        apiFetch('/dispatch/channels'),
+        apiFetch('/admin/users'),
+        apiFetch('/admin/system')
+      ]);
+      setChannels((await channelsResponse.json()).channels ?? []);
+      setUsers((await usersResponse.json()).users ?? []);
+      setSystem(await systemResponse.json());
+    } else {
+      setChannels([]);
+      setUsers([]);
+      setSystem(null);
+    }
   }
 
   async function collectNow() {
@@ -186,13 +226,19 @@ export function App() {
   }
 
   async function createChannel(type: string) {
-    let parsedConfig = {};
-    try { parsedConfig = JSON.parse(channelConfig); } catch { parsedConfig = {}; }
+    let parsedConfig: Record<string, unknown>;
+    try {
+      parsedConfig = JSON.parse(channelConfig) as Record<string, unknown>;
+    } catch {
+      setStatusMessage('Configuração JSON do canal é inválida.');
+      return;
+    }
+
     await apiFetch('/dispatch/channels', {
       method: 'POST',
       body: JSON.stringify({ name: `Canal ${type}`, type, config: parsedConfig })
     });
-    setStatusMessage(`Canal ${type} criado.`);
+    setStatusMessage(`Canal ${type} criado com configuração protegida.`);
     await loadAdminData();
   }
 
@@ -219,7 +265,7 @@ export function App() {
   }
 
   useEffect(() => {
-    loadData();
+    loadData().catch(() => undefined);
     const socket = io(apiUrl);
     socket.on('offers:init', (items: Offer[]) => setOffers(items));
     socket.on('offer:new', (offer: Offer) => {
@@ -234,7 +280,13 @@ export function App() {
     };
   }, []);
 
-  useEffect(() => { loadAdminData().catch(() => undefined); }, [token]);
+  useEffect(() => {
+    if (token && !currentUser) loadSessionUser().catch(() => undefined);
+  }, [token]);
+
+  useEffect(() => {
+    if (token && currentUser) loadAdminData().catch((error) => setStatusMessage(error instanceof Error ? error.message : 'Erro ao carregar painel.'));
+  }, [token, currentUser?.role]);
 
   if (!token) {
     return (
@@ -243,8 +295,8 @@ export function App() {
           <span className="badge">Acesso administrativo</span>
           <h1>Solução de Promoção</h1>
           <p>Entre para administrar fontes, alertas, usuários, canais de distribuição e varreduras em tempo real.</p>
-          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="E-mail" />
-          <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Senha" type="password" />
+          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="E-mail" autoComplete="username" />
+          <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Senha" type="password" autoComplete="current-password" />
           <button onClick={loginNow} disabled={loading}>{loading ? 'Entrando...' : 'Entrar no painel'}</button>
           {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
         </section>
@@ -255,7 +307,7 @@ export function App() {
   return (
     <main className="app-shell">
       <section className="hero">
-        <div className="topbar"><span className="badge">Radar ao vivo</span><button className="ghost-button" onClick={logout}>Sair</button></div>
+        <div className="topbar"><span className="badge">Radar ao vivo {currentUser ? `• ${currentUser.role}` : ''}</span><button className="ghost-button" onClick={logout}>Sair</button></div>
         <h1>Solução de Promoção</h1>
         <p>Painel para encontrar oportunidades em marketplaces confiáveis, aprovar ofertas por score e distribuir automaticamente conforme alertas ativos.</p>
         <div className="collector-actions">
@@ -267,7 +319,7 @@ export function App() {
           </select>
           <input value={minDiscount} onChange={(event) => setMinDiscount(event.target.value)} placeholder="Desconto mínimo" />
           <button onClick={loadData}>Filtrar</button>
-          <button onClick={collectNow} disabled={loading}>{loading ? 'Enfileirando...' : 'Varrer agora'}</button>
+          {canEdit ? <button onClick={collectNow} disabled={loading}>{loading ? 'Enfileirando...' : 'Varrer agora'}</button> : null}
           <button onClick={loadAdminData}>Atualizar operação</button>
         </div>
         {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
@@ -279,7 +331,7 @@ export function App() {
         <article><strong>{stats.bestDiscount}%</strong><span>Maior desconto</span></article>
       </section>
 
-      {system ? (
+      {isAdmin && system ? (
         <section className="admin-grid">
           <article>
             <h3>Status da operação</h3>
@@ -310,40 +362,48 @@ export function App() {
       <section className="admin-grid">
         <article>
           <h3>Fontes</h3>
-          <button onClick={createSource}>Criar fonte da busca atual</button>
-          <div className="compact-list">{sources.slice(0, 8).map((source) => <div className="compact-row" key={source.id}><span>{source.name}<small>{source.marketplace} • {source.keywords.join(', ')}</small></span><button onClick={() => toggleSource(source)}>{source.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
+          {canEdit ? <button onClick={createSource}>Criar fonte da busca atual</button> : <p className="panel-hint">Acesso somente para consulta.</p>}
+          <div className="compact-list">{sources.slice(0, 8).map((source) => <div className="compact-row" key={source.id}><span>{source.name}<small>{source.marketplace} • {source.keywords.join(', ')}</small></span>{canEdit ? <button onClick={() => toggleSource(source)}>{source.isActive ? 'Desativar' : 'Ativar'}</button> : null}</div>)}</div>
         </article>
         <article>
           <h3>Alertas</h3>
-          <button onClick={createAlert}>Criar alerta da busca atual</button>
+          {canEdit ? <button onClick={createAlert}>Criar alerta da busca atual</button> : null}
           <p className="panel-hint">Com alertas ativos, só serão distribuídas ofertas que combinarem com as regras.</p>
-          <div className="compact-list">{alerts.slice(0, 8).map((alert) => <div className="compact-row" key={alert.id}><span>{alert.name}<small>{alert.minDiscountPercent}% OFF • {alert.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleAlert(alert)}>{alert.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
+          <div className="compact-list">{alerts.slice(0, 8).map((alert) => <div className="compact-row" key={alert.id}><span>{alert.name}<small>{alert.minDiscountPercent}% OFF • {alert.isActive ? 'Ativo' : 'Inativo'}</small></span>{canEdit ? <button onClick={() => toggleAlert(alert)}>{alert.isActive ? 'Desativar' : 'Ativar'}</button> : null}</div>)}</div>
         </article>
-        <article>
-          <h3>Distribuição</h3>
-          <div className="mini-actions"><button onClick={() => setChannelConfig(channelExamples.webhook)}>Modelo Webhook</button><button onClick={() => setChannelConfig(channelExamples.telegram)}>Modelo Telegram</button><button onClick={() => setChannelConfig(channelExamples.evolution)}>Modelo Evolution</button></div>
-          <textarea value={channelConfig} onChange={(event) => setChannelConfig(event.target.value)} />
-          <div className="mini-actions"><button onClick={() => createChannel('webhook')}>Webhook</button><button onClick={() => createChannel('telegram')}>Telegram</button><button onClick={() => createChannel('whatsapp')}>WhatsApp</button><button onClick={() => createChannel('evolution')}>Evolution API</button></div>
-          <div className="compact-list">{channels.slice(0, 8).map((channel) => <div className="compact-row" key={channel.id}><span>{channel.name}<small>{channel.type} • {channel.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleChannel(channel)}>{channel.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
-        </article>
+        {isAdmin ? (
+          <article>
+            <h3>Distribuição</h3>
+            <div className="mini-actions"><button onClick={() => setChannelConfig(channelExamples.webhook)}>Modelo Webhook</button><button onClick={() => setChannelConfig(channelExamples.telegram)}>Modelo Telegram</button><button onClick={() => setChannelConfig(channelExamples.evolution)}>Modelo Evolution</button></div>
+            <textarea value={channelConfig} onChange={(event) => setChannelConfig(event.target.value)} />
+            <div className="mini-actions"><button onClick={() => createChannel('webhook')}>Webhook</button><button onClick={() => createChannel('telegram')}>Telegram</button><button onClick={() => createChannel('whatsapp')}>WhatsApp</button><button onClick={() => createChannel('evolution')}>Evolution API</button></div>
+            <div className="compact-list">{channels.slice(0, 8).map((channel) => <div className="compact-row" key={channel.id}><span>{channel.name}<small>{channel.type} • {channel.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleChannel(channel)}>{channel.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
+          </article>
+        ) : null}
       </section>
 
-      <section className="admin-grid">
-        <article>
-          <h3>Usuários</h3>
-          <input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Nome" />
-          <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="E-mail" />
-          <input value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} type="password" placeholder="Senha mínima 8 caracteres" />
-          <select value={newUserRole} onChange={(event) => setNewUserRole(event.target.value)}><option value="VIEWER">Viewer</option><option value="EDITOR">Editor</option><option value="ADMIN">Admin</option></select>
-          <button onClick={createUser}>Criar usuário</button>
-          <div className="compact-list">{users.slice(0, 8).map((user) => <div className="compact-row" key={user.id}><span>{user.name}<small>{user.email} • {user.role} • {user.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleUser(user)}>{user.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
-        </article>
-        <article>
-          <h3>Logs de envio</h3>
-          <button onClick={loadAdminData}>Atualizar logs</button>
-          <div className="compact-list">{logs.slice(0, 10).map((log) => <div className="compact-row" key={log.id}><span>{log.channel} • {log.status}<small>{log.offer?.title ?? 'Oferta indisponível'} {log.error ? `• ${log.error}` : ''}</small></span></div>)}</div>
-        </article>
-      </section>
+      {(isAdmin || canEdit) ? (
+        <section className="admin-grid">
+          {isAdmin ? (
+            <article>
+              <h3>Usuários</h3>
+              <input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Nome" />
+              <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="E-mail" />
+              <input value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} type="password" placeholder="Senha mínima 12 caracteres" />
+              <select value={newUserRole} onChange={(event) => setNewUserRole(event.target.value)}><option value="VIEWER">Viewer</option><option value="EDITOR">Editor</option><option value="ADMIN">Admin</option></select>
+              <button onClick={createUser}>Criar usuário</button>
+              <div className="compact-list">{users.slice(0, 8).map((user) => <div className="compact-row" key={user.id}><span>{user.name}<small>{user.email} • {user.role} • {user.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleUser(user)}>{user.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
+            </article>
+          ) : null}
+          {canEdit ? (
+            <article>
+              <h3>Logs de envio</h3>
+              <button onClick={loadAdminData}>Atualizar logs</button>
+              <div className="compact-list">{logs.slice(0, 10).map((log) => <div className="compact-row" key={log.id}><span>{log.channel} • {log.status}<small>{log.offer?.title ?? 'Oferta indisponível'} {log.error ? `• ${log.error}` : ''}</small></span></div>)}</div>
+            </article>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="offer-grid">
         {offers.map((offer) => (

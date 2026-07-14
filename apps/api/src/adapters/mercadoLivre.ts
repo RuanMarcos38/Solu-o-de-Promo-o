@@ -1,6 +1,7 @@
 import type { MarketplaceAdapter, NormalizedOffer, SearchInput } from '../types.js';
 import { calculateDiscount, calculateScore, normalizeTitle } from '../scoring.js';
 import { config } from '../config.js';
+import { fetchExternal } from '../http.js';
 
 type MercadoLivreItem = {
   id: string;
@@ -26,8 +27,8 @@ export const mercadoLivreAdapter: MarketplaceAdapter = {
       limit: String(input.limit ?? config.maxResultsPerSource)
     });
 
-    const url = `https://api.mercadolibre.com/sites/${config.mercadoLivreSiteId}/search?${params.toString()}`;
-    const response = await fetch(url);
+    const url = `https://api.mercadolibre.com/sites/${encodeURIComponent(config.mercadoLivreSiteId)}/search?${params.toString()}`;
+    const response = await fetchExternal(url);
 
     if (!response.ok) {
       throw new Error(`Mercado Livre API error: ${response.status}`);

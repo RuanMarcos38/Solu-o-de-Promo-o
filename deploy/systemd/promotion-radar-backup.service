@@ -1,0 +1,23 @@
+[Unit]
+Description=Promotion Radar production backup
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=promotion-radar
+Group=promotion-radar
+WorkingDirectory=/opt/promotion-radar
+ExecStart=/usr/bin/bash /opt/promotion-radar/scripts/backup-production.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/promotion-radar/backups /opt/promotion-radar/.deploy
+
+[Install]
+WantedBy=multi-user.target

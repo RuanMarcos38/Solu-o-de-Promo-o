@@ -1,60 +1,66 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: promo_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: promo
-      POSTGRES_PASSWORD: promo
-      POSTGRES_DB: promo_db
+      POSTGRES_USER: ${POSTGRES_USER:-promo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-promo-local-db}
+      POSTGRES_DB: ${POSTGRES_DB:-promo_db}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U promo -d promo_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-promo} -d ${POSTGRES_DB:-promo_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
 
   redis:
     image: redis:7-alpine
-    container_name: promo_redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-promo-local-redis}"]
     ports:
-      - "6379:6379"
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a '${REDIS_PASSWORD:-promo-local-redis}' ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
 
   migrate:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    container_name: promo_migrate
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://promo:promo@postgres:5432/promo_db?schema=public
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-promo}:${POSTGRES_PASSWORD:-promo-local-db}@postgres:5432/${POSTGRES_DB:-promo_db}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:-promo-local-redis}@redis:6379
     command: ["npm", "run", "prisma:deploy", "-w", "apps/api"]
     depends_on:
       postgres:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
 
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    container_name: promo_api
     restart: unless-stopped
+    init: true
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://promo:promo@postgres:5432/promo_db?schema=public
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-promo}:${POSTGRES_PASSWORD:-promo-local-db}@postgres:5432/${POSTGRES_DB:-promo_db}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:-promo-local-redis}@redis:6379
     ports:
       - "3333:3333"
     depends_on:
@@ -62,24 +68,38 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3333/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    stop_grace_period: 20s
+    security_opt:
+      - no-new-privileges:true
 
   worker:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    container_name: promo_worker
     restart: unless-stopped
+    init: true
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://promo:promo@postgres:5432/promo_db?schema=public
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-promo}:${POSTGRES_PASSWORD:-promo-local-db}@postgres:5432/${POSTGRES_DB:-promo_db}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:-promo-local-redis}@redis:6379
     command: ["npm", "run", "start:worker", "-w", "apps/api"]
+    ports:
+      - "${WORKER_METRICS_BIND_ADDRESS:-127.0.0.1}:${WORKER_METRICS_PORT:-9464}:${WORKER_METRICS_PORT:-9464}"
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    stop_grace_period: 25s
+    security_opt:
+      - no-new-privileges:true
 
   web:
     build:
@@ -87,12 +107,114 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_API_URL: ${PUBLIC_API_URL:-http://localhost:3333}
-    container_name: promo_web
     restart: unless-stopped
+    init: true
     ports:
       - "5173:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  alertmanager:
+    profiles: ["observability"]
+    image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.33.1}
+    restart: unless-stopped
+    init: true
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=${ALERTMANAGER_EXTERNAL_URL:-http://localhost:9093}
+    ports:
+      - "${ALERTMANAGER_BIND_ADDRESS:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./ops/alertmanager/generated/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./ops/alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager_data:/alertmanager
+    secrets:
+      - alertmanager_smtp_password
+      - alertmanager_telegram_bot_token
+      - alertmanager_primary_webhook_url
+      - alertmanager_secondary_webhook_url
+      - alertmanager_warning_webhook_url
+    security_opt:
+      - no-new-privileges:true
+
+  prometheus:
+    profiles: ["observability"]
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.13.1}
+    restart: unless-stopped
+    init: true
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./ops/prometheus/prometheus.example.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    secrets:
+      - promotion_radar_metrics_token
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_started
+      alertmanager:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+
+  grafana:
+    profiles: ["observability"]
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.1.0}
+    restart: unless-stopped
+    init: true
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
+      GF_SECURITY_COOKIE_SAMESITE: strict
+    ports:
+      - "${GRAFANA_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    secrets:
+      - grafana_admin_password
+    depends_on:
+      prometheus:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   postgres_data:
+  redis_data:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
+
+secrets:
+  promotion_radar_metrics_token:
+    file: ./ops/observability/secrets/promotion_radar_metrics_token
+  grafana_admin_password:
+    file: ./ops/observability/secrets/grafana_admin_password
+  alertmanager_smtp_password:
+    file: ./ops/observability/secrets/alertmanager_smtp_password
+  alertmanager_telegram_bot_token:
+    file: ./ops/observability/secrets/alertmanager_telegram_bot_token
+  alertmanager_primary_webhook_url:
+    file: ./ops/observability/secrets/alertmanager_primary_webhook_url
+  alertmanager_secondary_webhook_url:
+    file: ./ops/observability/secrets/alertmanager_secondary_webhook_url
+  alertmanager_warning_webhook_url:
+    file: ./ops/observability/secrets/alertmanager_warning_webhook_url

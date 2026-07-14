@@ -44,3 +44,51 @@ button:disabled { opacity: .65; cursor: progress; }
 .offer-card strong { font-size: 1.35rem; }
 .offer-card a { display: inline-flex; margin-top: 12px; color: #7dd3fc; font-weight: 800; text-decoration: none; }
 .marketplace { color: #93c5fd; font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+
+.operations-shell { width: min(1180px, calc(100% - 32px)); margin: -18px auto 42px; }
+.operations-panel { display: grid; gap: 20px; padding: 28px; border-radius: 28px; background: rgba(7, 12, 27, .94); border: 1px solid rgba(56, 189, 248, .2); box-shadow: 0 24px 90px rgba(0, 0, 0, .32); }
+.operations-header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
+.operations-header h2 { margin: 16px 0 8px; font-size: clamp(1.7rem, 4vw, 2.5rem); letter-spacing: -.04em; }
+.operations-header p { max-width: 760px; margin: 0; }
+.operations-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.ops-card { padding: 18px; border-radius: 20px; background: rgba(15, 23, 42, .78); border: 1px solid rgba(148, 163, 184, .14); }
+.ops-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ops-card-heading h3 { margin: 5px 0 0; font-size: 1rem; }
+.ops-eyebrow { color: #7dd3fc; font-size: .72rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.ops-number { font-size: 2rem; line-height: 1; }
+.ops-number.attention { color: #fbbf24; }
+.ops-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.ops-metrics span { padding: 9px 10px; border-radius: 12px; color: #94a3b8; background: rgba(2, 6, 23, .44); font-size: .78rem; }
+.ops-metrics b { color: #f8fafc; }
+.operations-columns { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.35fr); gap: 16px; }
+.operations-section { min-width: 0; padding: 20px; border-radius: 22px; background: rgba(15, 23, 42, .68); border: 1px solid rgba(148, 163, 184, .14); }
+.operations-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.operations-section-heading h3 { margin-bottom: 4px; }
+.operations-section-heading p { margin: 0; font-size: .85rem; }
+.ops-counter { display: grid; place-items: center; min-width: 42px; height: 42px; padding: 0 10px; border-radius: 14px; background: rgba(56, 189, 248, .12); color: #7dd3fc; font-weight: 900; }
+.ops-counter.danger { background: rgba(239, 68, 68, .13); color: #fca5a5; }
+.operations-list { display: grid; gap: 10px; max-height: 520px; overflow: auto; margin-top: 12px; padding-right: 2px; }
+.operations-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px; border-radius: 16px; background: rgba(2, 6, 23, .5); border: 1px solid rgba(148, 163, 184, .12); }
+.operations-row > div { min-width: 0; }
+.operations-row strong { display: block; overflow-wrap: anywhere; }
+.operations-row small { display: block; margin-top: 5px; color: #94a3b8; overflow-wrap: anywhere; }
+.operations-row p { margin: 8px 0 0; color: #fca5a5; font-size: .86rem; line-height: 1.45; overflow-wrap: anywhere; }
+.operations-row button { flex: 0 0 auto; padding: 10px 12px; border-radius: 12px; font-size: .82rem; }
+.ops-inline-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ops-state { padding: 4px 8px; border-radius: 999px; background: rgba(245, 158, 11, .13); color: #fcd34d; font-size: .68rem; font-weight: 900; text-transform: uppercase; }
+.ops-empty { margin: 0; padding: 18px; border-radius: 16px; text-align: center; background: rgba(2, 6, 23, .35); color: #94a3b8; }
+.operations-updated { margin: 0; text-align: right; color: #64748b; font-size: .78rem; }
+
+@media (max-width: 860px) {
+  .operations-columns { grid-template-columns: 1fr; }
+  .operations-header { flex-direction: column; }
+  .operations-header button { width: 100%; }
+}
+
+@media (max-width: 600px) {
+  .app-shell, .operations-shell { width: min(100% - 20px, 1180px); }
+  .hero, .operations-panel { padding: 20px; border-radius: 22px; }
+  .operations-row, .dlq-row { align-items: stretch; flex-direction: column; }
+  .operations-row button { width: 100%; }
+  .ops-metrics { grid-template-columns: 1fr; }
+}
