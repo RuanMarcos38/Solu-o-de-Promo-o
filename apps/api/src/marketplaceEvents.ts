@@ -27,4 +27,6 @@ export async function registerMarketplaceEventBridge(io: Server) {
       console.error('[events] invalid promotion event', error);
     }
   });
+
+  return subscriber;
 }
