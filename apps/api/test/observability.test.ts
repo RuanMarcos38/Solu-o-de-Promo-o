@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { publicObservabilityConfig } from '../src/observabilityConfig.js';
-import { evaluateLatencySlo, evaluateRatioSlo } from '../src/slo.js';
+import { evaluateLatencySlo, evaluateRatioSlo } from '../src/sloRules.js';
 import {
   prometheusMetrics,
   recordDispatchAttempt,
