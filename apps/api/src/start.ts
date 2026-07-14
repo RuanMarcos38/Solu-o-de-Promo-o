@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { config } from './config.js';
 import { createApp } from './bootstrap.js';
 import { prisma } from './db.js';
-import { connection } from './queue.js';
+import { collectOffersQueue, connection, dispatchDeadLetterQueue, dispatchOffersQueue } from './queue.js';
 
 const app = await createApp();
 await app.listen({ port: config.apiPort, host: '0.0.0.0' });
@@ -22,6 +22,11 @@ async function shutdown(signal: string) {
 
   try {
     await app.close();
+    await Promise.all([
+      collectOffersQueue.close(),
+      dispatchOffersQueue.close(),
+      dispatchDeadLetterQueue.close()
+    ]);
     await prisma.$disconnect();
     if (connection.status !== 'end') await connection.quit();
     clearTimeout(forceExit);
