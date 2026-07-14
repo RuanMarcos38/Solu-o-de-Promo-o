@@ -18,7 +18,7 @@ function isEncryptedPayload(value: unknown): value is EncryptedPayload {
   return payload.__encrypted === true && payload.version === 1 && payload.algorithm === 'aes-256-gcm';
 }
 
-export function encryptChannelConfig(value: Record<string, unknown>): EncryptedPayload {
+export function encryptSensitiveConfig(value: Record<string, unknown>): EncryptedPayload {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
   const encrypted = Buffer.concat([
@@ -36,7 +36,7 @@ export function encryptChannelConfig(value: Record<string, unknown>): EncryptedP
   };
 }
 
-export function decryptChannelConfig(value: unknown): Record<string, unknown> {
+export function decryptSensitiveConfig(value: unknown): Record<string, unknown> {
   if (!isEncryptedPayload(value)) {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       return value as Record<string, unknown>;
@@ -54,8 +54,8 @@ export function decryptChannelConfig(value: unknown): Record<string, unknown> {
   return JSON.parse(decrypted.toString('utf8')) as Record<string, unknown>;
 }
 
-export function summarizeChannelConfig(value: unknown) {
-  const decrypted = decryptChannelConfig(value);
+export function summarizeSensitiveConfig(value: unknown) {
+  const decrypted = decryptSensitiveConfig(value);
   const summary: Record<string, unknown> = {};
 
   for (const [keyName, fieldValue] of Object.entries(decrypted)) {
@@ -74,3 +74,7 @@ export function summarizeChannelConfig(value: unknown) {
 
   return summary;
 }
+
+export const encryptChannelConfig = encryptSensitiveConfig;
+export const decryptChannelConfig = decryptSensitiveConfig;
+export const summarizeChannelConfig = summarizeSensitiveConfig;
