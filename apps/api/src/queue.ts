@@ -88,13 +88,37 @@ export const dispatchDeadLetterQueue = new Queue<DispatchDeadLetterData>(DISPATC
   }
 });
 
-export const operationalAlertsQueue = new Queue<OperationalAlertQueueData>(OPERATIONAL_ALERT_QUEUE_NAME, {
-  connection: queueConnection,
-  defaultJobOptions: {
-    attempts: operationalConfig.attempts,
-    backoff: { type: 'exponential', delay: operationalConfig.backoffMs },
-    removeOnComplete: { age: 604_800, count: 5_000 },
-    removeOnFail: { age: 1_209_600, count: 5_000 }
+let operationalAlertsQueueInstance: Queue<OperationalAlertQueueData> | null = null;
+
+function getOperationalAlertsQueue() {
+  if (!operationalAlertsQueueInstance) {
+    operationalAlertsQueueInstance = new Queue<OperationalAlertQueueData>(OPERATIONAL_ALERT_QUEUE_NAME, {
+      connection: queueConnection,
+      defaultJobOptions: {
+        attempts: operationalConfig.attempts,
+        backoff: { type: 'exponential', delay: operationalConfig.backoffMs },
+        removeOnComplete: { age: 604_800, count: 5_000 },
+        removeOnFail: { age: 1_209_600, count: 5_000 }
+      }
+    });
+  }
+  return operationalAlertsQueueInstance;
+}
+
+export const operationalAlertsQueue = new Proxy({} as Queue<OperationalAlertQueueData>, {
+  get(_target, property) {
+    if (property === 'close') {
+      return async () => {
+        if (!operationalAlertsQueueInstance) return;
+        const queue = operationalAlertsQueueInstance;
+        operationalAlertsQueueInstance = null;
+        await queue.close();
+      };
+    }
+
+    const queue = getOperationalAlertsQueue();
+    const value = Reflect.get(queue, property, queue);
+    return typeof value === 'function' ? value.bind(queue) : value;
   }
 });
 
