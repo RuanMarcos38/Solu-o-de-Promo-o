@@ -68,7 +68,10 @@ describe('endpoints de observabilidade', () => {
     assert.equal(viewerStatus.statusCode, 403);
   });
 
-  test('retorna métricas Prometheus para administrador', async () => {
+  test('retorna métricas Prometheus para administrador e instrumenta rotas existentes', async () => {
+    const health = await app.inject({ method: 'GET', url: '/health' });
+    assert.equal(health.statusCode, 200);
+
     const response = await app.inject({
       method: 'GET',
       url: '/metrics',
@@ -78,6 +81,7 @@ describe('endpoints de observabilidade', () => {
     assert.match(response.headers['content-type'] || '', /text\/plain/);
     assert.match(response.body, /promotion_radar_http_requests_total/);
     assert.match(response.body, /promotion_radar_queue_depth/);
+    assert.match(response.body, /route="-health"/);
     assert.equal(response.body.includes('TestAdminPassword123!'), false);
   });
 
