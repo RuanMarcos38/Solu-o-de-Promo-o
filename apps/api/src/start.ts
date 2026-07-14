@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { config } from './config.js';
-import { createApp } from './bootstrap.js';
+import { createApp } from './application.js';
 import { prisma } from './db.js';
 import { collectOffersQueue, connection, dispatchDeadLetterQueue, dispatchOffersQueue } from './queue.js';
 
