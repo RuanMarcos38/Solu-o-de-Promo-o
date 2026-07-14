@@ -5,30 +5,24 @@ ENV_FILE="${1:-.env.production}"
 SOURCE_FILE="ops/alertmanager/alertmanager.example.yml"
 TARGET_FILE="ops/alertmanager/generated/alertmanager.yml"
 
+# shellcheck source=scripts/lib/env-file.sh
+source scripts/lib/env-file.sh
+
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Arquivo $ENV_FILE não encontrado." >&2
   exit 1
 fi
 
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
+smtp_host="$(require_env_value "$ENV_FILE" ALERTMANAGER_SMTP_SMARTHOST)"
+smtp_from="$(require_env_value "$ENV_FILE" ALERTMANAGER_SMTP_FROM)"
+smtp_user="$(require_env_value "$ENV_FILE" ALERTMANAGER_SMTP_USERNAME)"
+email_to="$(require_env_value "$ENV_FILE" ALERTMANAGER_EMAIL_TO)"
+telegram_chat="$(require_env_value "$ENV_FILE" ALERTMANAGER_TELEGRAM_CHAT_ID)"
 
-required=(
-  ALERTMANAGER_SMTP_SMARTHOST
-  ALERTMANAGER_SMTP_FROM
-  ALERTMANAGER_SMTP_USERNAME
-  ALERTMANAGER_EMAIL_TO
-  ALERTMANAGER_TELEGRAM_CHAT_ID
-)
-
-for name in "${required[@]}"; do
-  if [[ -z "${!name:-}" ]]; then
-    echo "$name precisa ser configurado em $ENV_FILE" >&2
-    exit 1
-  fi
-done
+if [[ ! "$telegram_chat" =~ ^-?[0-9]+$ ]]; then
+  echo "ALERTMANAGER_TELEGRAM_CHAT_ID precisa ser numérico." >&2
+  exit 1
+fi
 
 escape_sed() {
   printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
@@ -37,11 +31,11 @@ escape_sed() {
 mkdir -p "$(dirname "$TARGET_FILE")"
 cp "$SOURCE_FILE" "$TARGET_FILE"
 
-smtp_host="$(escape_sed "$ALERTMANAGER_SMTP_SMARTHOST")"
-smtp_from="$(escape_sed "$ALERTMANAGER_SMTP_FROM")"
-smtp_user="$(escape_sed "$ALERTMANAGER_SMTP_USERNAME")"
-email_to="$(escape_sed "$ALERTMANAGER_EMAIL_TO")"
-telegram_chat="$(escape_sed "$ALERTMANAGER_TELEGRAM_CHAT_ID")"
+smtp_host="$(escape_sed "$smtp_host")"
+smtp_from="$(escape_sed "$smtp_from")"
+smtp_user="$(escape_sed "$smtp_user")"
+email_to="$(escape_sed "$email_to")"
+telegram_chat="$(escape_sed "$telegram_chat")"
 
 sed -i \
   -e "s|smtp.example.invalid:587|$smtp_host|g" \
