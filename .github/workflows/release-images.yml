@@ -1,0 +1,113 @@
+name: Release Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Tag imutável para as imagens
+        required: true
+        type: string
+      public_api_url:
+        description: URL HTTPS pública da API usada pelo frontend
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: release-images-${{ github.ref }}-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: ruanmarcos38
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.release_tag }}
+          INPUT_API_URL: ${{ inputs.public_api_url }}
+          REPOSITORY_API_URL: ${{ vars.PUBLIC_API_URL }}
+        run: |
+          release_tag="${INPUT_TAG:-${GITHUB_REF_NAME}}"
+          public_api_url="${INPUT_API_URL:-${REPOSITORY_API_URL}}"
+
+          if [[ -z "$release_tag" || ! "$release_tag" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "Release tag inválida." >&2
+            exit 1
+          fi
+
+          if [[ ! "$public_api_url" =~ ^https:// ]]; then
+            echo "PUBLIC_API_URL precisa usar HTTPS. Configure a variável do repositório ou o input manual." >&2
+            exit 1
+          fi
+
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "api_url=$public_api_url" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/promotion-radar-api:${{ steps.release.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/promotion-radar-api:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.release.outputs.tag }}
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            VITE_API_URL=${{ steps.release.outputs.api_url }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/promotion-radar-web:${{ steps.release.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/promotion-radar-web:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.release.outputs.tag }}
+
+      - name: Release summary
+        run: |
+          {
+            echo '## Imagens publicadas'
+            echo
+            echo "- API: \`${REGISTRY}/${IMAGE_NAMESPACE}/promotion-radar-api:${{ steps.release.outputs.tag }}\`"
+            echo "- Web: \`${REGISTRY}/${IMAGE_NAMESPACE}/promotion-radar-web:${{ steps.release.outputs.tag }}\`"
+            echo "- API pública: \`${{ steps.release.outputs.api_url }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
