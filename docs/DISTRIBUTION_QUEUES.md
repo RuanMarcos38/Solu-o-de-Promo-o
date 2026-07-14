@@ -28,8 +28,6 @@ A chave idempotente usa SHA-256 sobre:
 
 O mesmo evento comercial para o mesmo canal produz o mesmo `jobId` no BullMQ. Uma nova entrega é permitida quando o preço, desconto, score ou destino muda.
 
-O endpoint administrativo de teste utiliza um escopo forçado para permitir testes repetidos sem alterar a idempotência de produção.
-
 ## Retry e backoff
 
 Configurações:
