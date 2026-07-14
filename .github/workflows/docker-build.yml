@@ -70,6 +70,12 @@ jobs:
       - name: API readiness
         run: curl -fsS http://localhost:3333/ready
 
+      - name: API Prometheus metrics
+        run: |
+          curl -fsS -H "Authorization: Bearer ${CI_METRICS_TOKEN}" http://localhost:3333/metrics > api-metrics.txt
+          grep -q 'promotion_radar_http_requests_total' api-metrics.txt
+          grep -q 'promotion_radar_service_info' api-metrics.txt
+
       - name: Worker observability healthcheck
         run: |
           for i in {1..30}; do
@@ -107,12 +113,26 @@ jobs:
       - name: Prometheus scrape smoke test
         run: |
           for i in {1..20}; do
+            curl -fsS 'http://localhost:9090/api/v1/targets' > prometheus-targets.json
             curl -fsS 'http://localhost:9090/api/v1/query?query=promotion_radar_service_info' > prometheus-query.json
-            if grep -q '"status":"success"' prometheus-query.json && grep -q 'promotion-radar' prometheus-query.json; then
+            if node -e '
+              const fs = require("fs");
+              const targets = JSON.parse(fs.readFileSync("prometheus-targets.json", "utf8"));
+              const query = JSON.parse(fs.readFileSync("prometheus-query.json", "utf8"));
+              const expected = new Set(["promotion-radar-api", "promotion-radar-worker"]);
+              for (const target of targets.data.activeTargets || []) {
+                if (target.health === "up") expected.delete(target.labels?.job);
+              }
+              const samples = query.data?.result || [];
+              process.exit(expected.size === 0 && samples.length >= 2 ? 0 : 1);
+            '; then
               exit 0
             fi
             sleep 3
           done
+          echo '--- targets ---'
+          cat prometheus-targets.json
+          echo '--- query ---'
           cat prometheus-query.json
           exit 1
 
