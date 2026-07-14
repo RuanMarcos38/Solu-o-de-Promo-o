@@ -112,6 +112,8 @@ jobs:
 
       - name: Prometheus scrape smoke test
         run: |
+          set +e
+          success=0
           for i in {1..20}; do
             curl -fsS 'http://localhost:9090/api/v1/targets' > prometheus-targets.json
             curl -fsS 'http://localhost:9090/api/v1/query?query=promotion_radar_service_info' > prometheus-query.json
@@ -126,27 +128,54 @@ jobs:
               const samples = query.data?.result || [];
               process.exit(expected.size === 0 && samples.length >= 2 ? 0 : 1);
             '; then
-              exit 0
+              success=1
+              break
             fi
             sleep 3
           done
-          echo '--- targets ---'
-          cat prometheus-targets.json
-          echo '--- query ---'
-          cat prometheus-query.json
-          exit 1
+          printf '%s' "$success" > prometheus-smoke-result.txt
+          exit 0
 
       - name: Grafana dashboard provisioning smoke test
         run: |
+          set +e
+          success=0
           for i in {1..20}; do
             curl -fsS -u 'admin:ci-grafana-password' 'http://localhost:3000/api/search?query=Radar' > grafana-search.json
             if grep -q 'promotion-radar-overview' grafana-search.json && grep -q 'promotion-radar-slo' grafana-search.json; then
-              exit 0
+              success=1
+              break
             fi
             sleep 3
           done
-          cat grafana-search.json
-          exit 1
+          printf '%s' "$success" > grafana-smoke-result.txt
+          exit 0
+
+      - name: Capture observability logs
+        if: always()
+        run: docker compose --profile observability logs alertmanager prometheus grafana > observability-containers.log 2>&1 || true
+
+      - name: Upload observability smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observability-smoke-diagnostics
+          path: |
+            prometheus-targets.json
+            prometheus-query.json
+            prometheus-smoke-result.txt
+            grafana-search.json
+            grafana-smoke-result.txt
+            api-metrics.txt
+            worker-metrics.txt
+            observability-containers.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail when observability smoke tests fail
+        run: |
+          test "$(cat prometheus-smoke-result.txt)" = "1"
+          test "$(cat grafana-smoke-result.txt)" = "1"
 
       - name: Logs on failure
         if: failure()
