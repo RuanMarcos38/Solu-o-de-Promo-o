@@ -1,0 +1,112 @@
+groups:
+  - name: promotion-radar-sli-recording
+    interval: 30s
+    rules:
+      - record: promotion_radar:sli_api_availability:ratio_rate5m
+        expr: |
+          1 - (
+            sum(rate(promotion_radar_http_requests_total{status_class="5xx"}[5m]))
+            /
+            clamp_min(sum(rate(promotion_radar_http_requests_total[5m])), 0.000001)
+          )
+
+      - record: promotion_radar:sli_api_availability:ratio_rate1h
+        expr: |
+          1 - (
+            sum(rate(promotion_radar_http_requests_total{status_class="5xx"}[1h]))
+            /
+            clamp_min(sum(rate(promotion_radar_http_requests_total[1h])), 0.000001)
+          )
+
+      - record: promotion_radar:sli_dispatch_success:ratio_rate15m
+        expr: |
+          sum by (channel) (rate(promotion_radar_dispatch_attempts_total{result="success"}[15m]))
+          /
+          clamp_min(sum by (channel) (rate(promotion_radar_dispatch_attempts_total[15m])), 0.000001)
+
+      - record: promotion_radar:sli_operational_alert_success:ratio_rate15m
+        expr: |
+          sum by (channel) (rate(promotion_radar_operational_alert_deliveries_total{result="success"}[15m]))
+          /
+          clamp_min(sum by (channel) (rate(promotion_radar_operational_alert_deliveries_total[15m])), 0.000001)
+
+      - record: promotion_radar:sli_queue_waiting:p95_seconds_rate10m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (queue, le) (rate(promotion_radar_queue_waiting_duration_seconds_bucket[10m]))
+          )
+
+      - record: promotion_radar:slo_api_availability:error_budget_burn_rate5m
+        expr: |
+          (1 - promotion_radar:sli_api_availability:ratio_rate5m) / (1 - 0.999)
+
+      - record: promotion_radar:slo_api_availability:error_budget_burn_rate1h
+        expr: |
+          (1 - promotion_radar:sli_api_availability:ratio_rate1h) / (1 - 0.999)
+
+  - name: promotion-radar-slo-alerts
+    interval: 30s
+    rules:
+      - alert: PromotionRadarApiAvailabilityFastBurn
+        expr: |
+          promotion_radar:slo_api_availability:error_budget_burn_rate5m > 14.4
+          and
+          promotion_radar:slo_api_availability:error_budget_burn_rate1h > 14.4
+        for: 5m
+        labels:
+          severity: critical
+          service: promotion-radar
+          slo: api-availability
+        annotations:
+          summary: "API consumindo rapidamente o orçamento de erro"
+          description: "O burn rate de disponibilidade está acima de 14,4x nas janelas de 5 minutos e 1 hora."
+          runbook: "docs/OBSERVABILITY_SLO.md#api-availability-fast-burn"
+
+      - alert: PromotionRadarDispatchSuccessBelowSlo
+        expr: promotion_radar:sli_dispatch_success:ratio_rate15m < 0.98
+        for: 15m
+        labels:
+          severity: warning
+          service: promotion-radar
+          slo: dispatch-success
+        annotations:
+          summary: "Taxa de sucesso de distribuição abaixo do SLO"
+          description: "O canal {{ $labels.channel }} está abaixo de 98% de sucesso por 15 minutos."
+          runbook: "docs/OBSERVABILITY_SLO.md#dispatch-success-below-slo"
+
+      - alert: PromotionRadarOperationalAlertHealthBelowSlo
+        expr: promotion_radar:sli_operational_alert_success:ratio_rate15m < 0.99
+        for: 10m
+        labels:
+          severity: critical
+          service: promotion-radar
+          slo: operational-alert-health
+        annotations:
+          summary: "Canal de alerta operacional degradado"
+          description: "O canal {{ $labels.channel }} está abaixo de 99% de sucesso."
+          runbook: "docs/OBSERVABILITY_SLO.md#operational-alert-health-below-slo"
+
+      - alert: PromotionRadarQueueLatencyHigh
+        expr: promotion_radar:sli_queue_waiting:p95_seconds_rate10m > 30
+        for: 10m
+        labels:
+          severity: warning
+          service: promotion-radar
+          slo: queue-latency
+        annotations:
+          summary: "Latência p95 da fila acima do objetivo"
+          description: "A fila {{ $labels.queue }} está com p95 de espera acima de 30 segundos."
+          runbook: "docs/OBSERVABILITY_SLO.md#queue-latency-high"
+
+      - alert: PromotionRadarDeadLetterQueueNotEmpty
+        expr: promotion_radar_dispatch_dlq_items > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: promotion-radar
+          component: dispatch-dlq
+        annotations:
+          summary: "Dead-letter queue possui itens pendentes"
+          description: "Existem {{ $value }} itens aguardando análise ou reprocessamento."
+          runbook: "docs/DLQ_OPERATIONS_PANEL.md"
