@@ -20,15 +20,15 @@ const readList = (name: string, fallback: string[]) => {
 };
 
 const developmentEncryptionKey = Buffer.alloc(32).toString('base64');
-const nodeEnv = z.enum(['development', 'test', 'production']).parse(process.env.NODE_ENV ?? 'development');
+const nodeEnv = z.enum(['development', 'test', 'production']).parse(process.env.NODE_ENV || 'development');
 const isProduction = nodeEnv === 'production';
 const frontendOrigins = readList(
   'FRONTEND_ORIGINS',
-  [process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173']
+  [process.env.FRONTEND_ORIGIN || 'http://localhost:5173']
 );
-const jwtSecret = process.env.JWT_SECRET ?? 'change-me-in-production';
-const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@promoradar.local';
-const adminPassword = process.env.ADMIN_PASSWORD ?? 'admin123456';
+const jwtSecret = process.env.JWT_SECRET || 'change-me-in-production';
+const adminEmail = process.env.ADMIN_EMAIL || 'admin@promoradar.local';
+const adminPassword = process.env.ADMIN_PASSWORD || 'admin123456';
 const bootstrapAdminEnabled = readBoolean('BOOTSTRAP_ADMIN_ENABLED', !isProduction);
 const channelConfigEncryptionKey = process.env.CHANNEL_CONFIG_ENCRYPTION_KEY || developmentEncryptionKey;
 
@@ -84,14 +84,14 @@ export const config = {
   minOpportunityScore: readNumber('MIN_OPPORTUNITY_SCORE', 55),
   maxResultsPerSource: readNumber('MAX_RESULTS_PER_SOURCE', 30),
   collectIntervalSeconds: readNumber('COLLECT_INTERVAL_SECONDS', 60),
-  mercadoLivreSiteId: process.env.MERCADO_LIVRE_SITE_ID ?? 'MLB',
+  mercadoLivreSiteId: process.env.MERCADO_LIVRE_SITE_ID || 'MLB',
   jwtSecret,
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? (isProduction ? '30m' : '7d'),
-  jwtIssuer: process.env.JWT_ISSUER ?? 'promotion-radar-api',
-  jwtAudience: process.env.JWT_AUDIENCE ?? 'promotion-radar-web',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || (isProduction ? '30m' : '7d'),
+  jwtIssuer: process.env.JWT_ISSUER || 'promotion-radar-api',
+  jwtAudience: process.env.JWT_AUDIENCE || 'promotion-radar-web',
   adminEmail,
   adminPassword,
-  adminName: process.env.ADMIN_NAME ?? 'Administrador',
+  adminName: process.env.ADMIN_NAME || 'Administrador',
   bootstrapAdminEnabled,
   channelConfigEncryptionKey,
   outboundHttpTimeoutMs: readNumber('OUTBOUND_HTTP_TIMEOUT_MS', 10_000),
