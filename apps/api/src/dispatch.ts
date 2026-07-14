@@ -4,7 +4,7 @@ import { fetchExternal } from './http.js';
 import { decryptChannelConfig } from './secrets.js';
 
 type ChannelConfig = Record<string, any>;
-type OfferForDispatch = {
+export type OfferForDispatch = {
   id: string;
   title: string;
   currentPrice: number;
@@ -15,7 +15,7 @@ type OfferForDispatch = {
   score: number;
 };
 
-type AlertForMatch = {
+export type AlertForMatch = {
   name: string;
   keywords: string[];
   marketplaces: string[];
@@ -27,14 +27,14 @@ function normalize(value: string) {
   return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
-function formatOfferMessage(offer: OfferForDispatch) {
+export function formatOfferMessage(offer: OfferForDispatch) {
   const price = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(offer.currentPrice);
   const discount = offer.discountPercent ? `\n🔥 Desconto: ${offer.discountPercent}% OFF` : '';
   const link = offer.affiliateUrl || offer.productUrl;
   return `🚨 Oferta encontrada!\n\n${offer.title}\n💰 ${price}${discount}\n⭐ Score: ${offer.score}\n🛒 ${link}`;
 }
 
-function offerMatchesAlert(offer: OfferForDispatch, alert: AlertForMatch) {
+export function offerMatchesAlert(offer: OfferForDispatch, alert: AlertForMatch) {
   const title = normalize(offer.title);
   const marketplace = normalize(offer.marketplace);
   const alertMarketplaces = alert.marketplaces.map(normalize).filter(Boolean);
