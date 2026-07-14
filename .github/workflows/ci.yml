@@ -18,7 +18,7 @@ jobs:
   quality:
     name: Typecheck, unit tests and build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://promo:promo@localhost:5432/promo_test?schema=public
@@ -47,6 +47,42 @@ jobs:
 
       - name: Web typecheck
         run: npm run lint -w apps/web
+
+      - name: Validate observability assets
+        run: npm run observability:validate
+
+      - name: Prepare observability validation fixtures
+        run: |
+          mkdir -p ops/alertmanager/generated ops/observability/secrets
+          cp ops/alertmanager/alertmanager.example.yml ops/alertmanager/generated/alertmanager.yml
+          printf '%s\n' 'ci-metrics-token-with-more-than-24-characters' > ops/observability/secrets/promotion_radar_metrics_token
+          printf '%s\n' 'ci-grafana-password' > ops/observability/secrets/grafana_admin_password
+          printf '%s\n' 'ci-smtp-password' > ops/observability/secrets/alertmanager_smtp_password
+          printf '%s\n' 'ci-telegram-token' > ops/observability/secrets/alertmanager_telegram_bot_token
+          printf '%s\n' 'https://example.invalid/primary' > ops/observability/secrets/alertmanager_primary_webhook_url
+          printf '%s\n' 'https://example.invalid/secondary' > ops/observability/secrets/alertmanager_secondary_webhook_url
+          printf '%s\n' 'https://example.invalid/warning' > ops/observability/secrets/alertmanager_warning_webhook_url
+          chmod 600 ops/observability/secrets/* ops/alertmanager/generated/alertmanager.yml
+
+      - name: Prometheus configuration check
+        run: >-
+          docker run --rm
+          -v "$PWD/ops/prometheus:/etc/prometheus:ro"
+          --entrypoint /bin/promtool
+          prom/prometheus:v3.13.1
+          check config /etc/prometheus/prometheus.example.yml
+
+      - name: Alertmanager configuration check
+        run: >-
+          docker run --rm
+          -v "$PWD/ops/alertmanager:/etc/alertmanager:ro"
+          -v "$PWD/ops/observability/secrets:/run/secrets:ro"
+          --entrypoint /bin/amtool
+          prom/alertmanager:v0.33.1
+          check-config /etc/alertmanager/alertmanager.example.yml
+
+      - name: Observability compose profile check
+        run: docker compose --profile observability config > /dev/null
 
       - name: Unit tests
         run: npm run test:unit -w apps/api
