@@ -7,8 +7,11 @@ SECRETS_ENV_FILE="${SECRETS_ENV_FILE:-.env.production.secrets}"
 COMPOSE_FILE="${COMPOSE_FILE:-compose.production.yml}"
 STATE_FILE="${STATE_FILE:-.deploy/current-release}"
 
-if [[ -z "$TARGET_RELEASE" ]]; then
-  echo "Uso: $0 <release-tag>" >&2
+# shellcheck source=scripts/lib/env-file.sh
+source scripts/lib/env-file.sh
+
+if [[ -z "$TARGET_RELEASE" || ! "$TARGET_RELEASE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Uso: $0 <release-tag-válida>" >&2
   exit 1
 fi
 
@@ -19,14 +22,17 @@ for file in "$ENV_FILE" "$SECRETS_ENV_FILE" "$COMPOSE_FILE"; do
   fi
 done
 
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
+APP_DOMAIN="$(require_env_value "$ENV_FILE" APP_DOMAIN)"
+API_DOMAIN="$(require_env_value "$ENV_FILE" API_DOMAIN)"
+GRAFANA_DOMAIN="$(require_env_value "$ENV_FILE" GRAFANA_DOMAIN)"
+TLS_EMAIL="$(require_env_value "$ENV_FILE" TLS_EMAIL)"
+DEPLOY_HEALTHCHECK_ATTEMPTS="$(get_env_value "$ENV_FILE" DEPLOY_HEALTHCHECK_ATTEMPTS 30)"
+DEPLOY_HEALTHCHECK_INTERVAL_SECONDS="$(get_env_value "$ENV_FILE" DEPLOY_HEALTHCHECK_INTERVAL_SECONDS 5)"
+GRAFANA_OAUTH_ENABLED="$(get_env_value "$ENV_FILE" GRAFANA_OAUTH_ENABLED false)"
 
-for value in "${APP_DOMAIN:-}" "${API_DOMAIN:-}" "${GRAFANA_DOMAIN:-}" "${TLS_EMAIL:-}"; do
-  if [[ -z "$value" || "$value" == *example.com* ]]; then
-    echo "Domínios e TLS_EMAIL precisam ser configurados antes do deploy." >&2
+for value in "$APP_DOMAIN" "$API_DOMAIN" "$GRAFANA_DOMAIN" "$TLS_EMAIL"; do
+  if [[ "$value" == *example.com* || "$value" == *example.invalid* ]]; then
+    echo "Domínios e TLS_EMAIL precisam usar valores reais antes do deploy." >&2
     exit 1
   fi
 done
@@ -42,19 +48,27 @@ required_secret_files=(
 )
 
 for file in "${required_secret_files[@]}"; do
-  if [[ ! -f "$file" ]]; then
-    echo "Arquivo de credencial ausente: $file" >&2
+  if [[ ! -s "$file" ]]; then
+    echo "Arquivo de credencial ausente ou vazio: $file" >&2
     exit 1
   fi
 done
 
-mkdir -p .deploy
-previous_release="none"
-if [[ -f "$STATE_FILE" ]]; then
-  # shellcheck disable=SC1090
-  source "$STATE_FILE"
-  previous_release="${RELEASE_TAG:-none}"
+for webhook_file in deploy/secrets/alertmanager_*_webhook_url; do
+  webhook_url="$(cat "$webhook_file")"
+  if [[ ! "$webhook_url" =~ ^https:// || "$webhook_url" == *example.invalid* ]]; then
+    echo "Webhook inválido em $webhook_file. Use uma URL HTTPS real." >&2
+    exit 1
+  fi
+done
+
+if [[ "$GRAFANA_OAUTH_ENABLED" == "true" && ! -s deploy/secrets/grafana_oauth_client_secret ]]; then
+  echo "SSO está habilitado, mas grafana_oauth_client_secret está vazio." >&2
+  exit 1
 fi
+
+mkdir -p .deploy
+previous_release="$(get_env_value "$STATE_FILE" RELEASE_TAG none)"
 
 sed -i -E "s|^RELEASE_TAG=.*|RELEASE_TAG=$TARGET_RELEASE|" "$ENV_FILE"
 export RELEASE_TAG="$TARGET_RELEASE"
@@ -81,18 +95,15 @@ dc run --rm migrate
 echo "Atualizando serviços..."
 dc up -d api worker web alertmanager prometheus grafana caddy
 
-attempts="${DEPLOY_HEALTHCHECK_ATTEMPTS:-30}"
-interval="${DEPLOY_HEALTHCHECK_INTERVAL_SECONDS:-5}"
 healthy=0
-
-for ((i=1; i<=attempts; i++)); do
+for ((i=1; i<=DEPLOY_HEALTHCHECK_ATTEMPTS; i++)); do
   if curl -fsS "https://${API_DOMAIN}/ready" >/dev/null \
     && curl -fsS "https://${APP_DOMAIN}/" >/dev/null \
     && curl -fsS "https://${GRAFANA_DOMAIN}/api/health" >/dev/null; then
     healthy=1
     break
   fi
-  sleep "$interval"
+  sleep "$DEPLOY_HEALTHCHECK_INTERVAL_SECONDS"
 done
 
 if [[ "$healthy" != "1" ]]; then
