@@ -19,6 +19,7 @@ const readList = (name: string, fallback: string[]) => {
   return value.split(',').map((item) => item.trim()).filter(Boolean);
 };
 
+const developmentEncryptionKey = Buffer.alloc(32).toString('base64');
 const nodeEnv = z.enum(['development', 'test', 'production']).parse(process.env.NODE_ENV ?? 'development');
 const isProduction = nodeEnv === 'production';
 const frontendOrigins = readList(
@@ -29,7 +30,7 @@ const jwtSecret = process.env.JWT_SECRET ?? 'change-me-in-production';
 const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@promoradar.local';
 const adminPassword = process.env.ADMIN_PASSWORD ?? 'admin123456';
 const bootstrapAdminEnabled = readBoolean('BOOTSTRAP_ADMIN_ENABLED', !isProduction);
-const channelConfigEncryptionKey = process.env.CHANNEL_CONFIG_ENCRYPTION_KEY ?? Buffer.alloc(32).toString('base64');
+const channelConfigEncryptionKey = process.env.CHANNEL_CONFIG_ENCRYPTION_KEY || developmentEncryptionKey;
 
 for (const origin of frontendOrigins) {
   const parsed = new URL(origin);
@@ -59,8 +60,8 @@ if (isProduction) {
     throw new Error('JWT_SECRET precisa ter pelo menos 32 caracteres aleatórios em produção');
   }
 
-  if (!process.env.CHANNEL_CONFIG_ENCRYPTION_KEY) {
-    throw new Error('CHANNEL_CONFIG_ENCRYPTION_KEY é obrigatória em produção');
+  if (!process.env.CHANNEL_CONFIG_ENCRYPTION_KEY || channelConfigEncryptionKey === developmentEncryptionKey) {
+    throw new Error('CHANNEL_CONFIG_ENCRYPTION_KEY forte e exclusiva é obrigatória em produção');
   }
 
   if (bootstrapAdminEnabled) {
