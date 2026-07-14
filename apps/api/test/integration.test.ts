@@ -5,9 +5,15 @@ import type { FastifyInstance } from 'fastify';
 import { createApp } from '../src/bootstrap.js';
 import { hashPassword } from '../src/auth.js';
 import { prisma } from '../src/db.js';
-import { dispatchOffer } from '../src/dispatch.js';
+import { dispatchOffer, moveDispatchJobToDeadLetter, processDispatchJob } from '../src/dispatch.js';
 import { upsertOffers } from '../src/offerStore.js';
-import { collectOffersQueue, connection } from '../src/queue.js';
+import {
+  collectOffersQueue,
+  connection,
+  dispatchDeadLetterQueue,
+  dispatchOffersQueue,
+  retryDeadLetterJob
+} from '../src/queue.js';
 import type { NormalizedOffer } from '../src/types.js';
 
 let app: FastifyInstance;
@@ -24,6 +30,11 @@ async function resetDatabase() {
   await prisma.dispatchChannel.deleteMany();
   await prisma.marketplaceSource.deleteMany();
   await prisma.user.deleteMany();
+}
+
+async function resetDispatchQueues() {
+  await dispatchOffersQueue.obliterate({ force: true });
+  await dispatchDeadLetterQueue.obliterate({ force: true });
 }
 
 async function login(email: string, password: string) {
@@ -52,6 +63,7 @@ async function createUser(input: { name: string; email: string; password: string
 }
 
 before(async () => {
+  await resetDispatchQueues();
   await resetDatabase();
   app = await createApp();
 
@@ -78,7 +90,11 @@ before(async () => {
 
 after(async () => {
   if (app) await app.close();
-  await collectOffersQueue.close();
+  await Promise.all([
+    collectOffersQueue.close(),
+    dispatchOffersQueue.close(),
+    dispatchDeadLetterQueue.close()
+  ]);
   if (connection.status !== 'end') await connection.quit();
   await prisma.$disconnect();
 });
@@ -223,7 +239,8 @@ describe('API integrada', () => {
     assert.equal(await prisma.offer.count({ where: { externalId: offer.externalId } }), 1);
   });
 
-  test('registra SKIPPED sem alerta compatível e FAILED sem interromper o processo', async () => {
+  test('aplica idempotência, registra falha, move para DLQ e permite replay', async () => {
+    await resetDispatchQueues();
     await prisma.dispatchLog.deleteMany();
     await prisma.alertRule.deleteMany();
     await prisma.dispatchChannel.deleteMany();
@@ -250,14 +267,15 @@ describe('API integrada', () => {
       }
     });
 
-    await dispatchOffer(dispatchInput);
+    const skippedResult = await dispatchOffer(dispatchInput);
+    assert.equal(skippedResult.skipped, true);
     const skipped = await prisma.dispatchLog.findFirstOrThrow({ where: { offerId: storedOffer.id } });
     assert.equal(skipped.status, DispatchStatus.SKIPPED);
     assert.equal(skipped.channel, 'alert-filter');
 
     await prisma.dispatchLog.deleteMany();
     await prisma.alertRule.deleteMany();
-    await prisma.dispatchChannel.create({
+    const channel = await prisma.dispatchChannel.create({
       data: {
         name: 'Canal inválido controlado',
         type: 'unsupported',
@@ -266,9 +284,37 @@ describe('API integrada', () => {
       }
     });
 
-    await dispatchOffer(dispatchInput);
+    const firstEnqueue = await dispatchOffer(dispatchInput);
+    const duplicateEnqueue = await dispatchOffer(dispatchInput);
+    assert.equal(firstEnqueue.queued, 1);
+    assert.equal(firstEnqueue.duplicates, 0);
+    assert.equal(duplicateEnqueue.queued, 0);
+    assert.equal(duplicateEnqueue.duplicates, 1);
+    assert.equal(firstEnqueue.jobIds.length, 1);
+
+    const job = await dispatchOffersQueue.getJob(firstEnqueue.jobIds[0]);
+    assert.ok(job);
+    assert.equal(job.data.channelId, channel.id);
+
+    await assert.rejects(() => processDispatchJob(job), /Canal não suportado/);
     const failed = await prisma.dispatchLog.findFirstOrThrow({ where: { offerId: storedOffer.id } });
     assert.equal(failed.status, DispatchStatus.FAILED);
     assert.match(failed.error ?? '', /Canal não suportado/);
+
+    const deadLetter = await moveDispatchJobToDeadLetter(job, new Error('Canal não suportado: unsupported'));
+    assert.ok(deadLetter.id);
+    const deadLetterId = deadLetter.id as string;
+    const storedDeadLetter = await dispatchDeadLetterQueue.getJob(deadLetterId);
+    assert.ok(storedDeadLetter);
+
+    const deadLetterLog = await prisma.dispatchLog.findUniqueOrThrow({ where: { id: failed.id } });
+    const deadLetterPayload = deadLetterLog.payload as Record<string, unknown>;
+    assert.equal(deadLetterPayload.deadLetter, true);
+    assert.equal(deadLetterPayload.deadLetterJobId, deadLetterId);
+
+    const replay = await retryDeadLetterJob(deadLetterId);
+    assert.ok(replay?.id);
+    assert.match(String(replay?.id), /-retry-/);
+    assert.equal(await dispatchDeadLetterQueue.getJob(deadLetterId), undefined);
   });
 });
