@@ -53,6 +53,7 @@ jobs:
 
       - name: Prepare observability validation fixtures
         run: |
+          cp .env.example .env
           mkdir -p ops/alertmanager/generated ops/observability/secrets
           cp ops/alertmanager/alertmanager.example.yml ops/alertmanager/generated/alertmanager.yml
           printf '%s\n' 'ci-metrics-token-with-more-than-24-characters' > ops/observability/secrets/promotion_radar_metrics_token
@@ -68,6 +69,7 @@ jobs:
         run: >-
           docker run --rm
           -v "$PWD/ops/prometheus:/etc/prometheus:ro"
+          -v "$PWD/ops/observability/secrets:/run/secrets:ro"
           --entrypoint /bin/promtool
           prom/prometheus:v3.13.1
           check config /etc/prometheus/prometheus.example.yml
