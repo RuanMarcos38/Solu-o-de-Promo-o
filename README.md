@@ -267,6 +267,7 @@ Veja os guias:
 - `docs/EASYPANEL_DEPLOY.md` — passo a passo para EasyPanel.
 - `docs/DEPLOY_DEVOPS.md` — deploy endurecido com Caddy, TLS automático, domínios, GHCR, SSO do Grafana, backups e rollback.
 - `docs/GO_LIVE_HOMOLOGATION.md` — homologação real na VPS Hostinger, publicação da primeira release e drill de disaster recovery.
+- `docs/SECRETS_CONFIGURATION.md` — separação entre secrets da VPS e credenciais de deploy do GitHub Actions.
 
 ## Homologação definida
 
