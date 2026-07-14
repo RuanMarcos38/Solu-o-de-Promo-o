@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { after, describe, test } from 'node:test';
 import { operationalConfig } from '../src/operationalConfig.js';
 import { formatOperationalAlert, operationalAlertStatus } from '../src/operationalAlerts.js';
-import type { OperationalAlert } from '../src/queue.js';
+import { connection, operationalAlertsQueue, type OperationalAlert } from '../src/queue.js';
 
 const alert: OperationalAlert = {
   kind: 'dlq-threshold',
@@ -13,6 +13,11 @@ const alert: OperationalAlert = {
   occurredAt: '2026-07-14T17:00:00.000Z',
   details: { total: 8, threshold: 5 }
 };
+
+after(async () => {
+  await operationalAlertsQueue.close();
+  if (connection.status !== 'end') await connection.quit();
+});
 
 describe('alertas operacionais', () => {
   test('formata uma mensagem legível para administradores', () => {
