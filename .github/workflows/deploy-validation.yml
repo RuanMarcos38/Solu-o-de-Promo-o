@@ -85,7 +85,7 @@ jobs:
             -e TLS_EMAIL=admin@example.net \
             -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
             caddy:2-alpine \
-            adapt --config /etc/caddy/Caddyfile --adapter caddyfile --pretty \
+            caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile --pretty \
             > caddy-adapt.json 2> caddy-adapt.stderr
           echo $? > caddy-adapt.exit-code
           exit 0
@@ -103,7 +103,7 @@ jobs:
         run: >-
           docker run --rm
           -v "$PWD/ops/prometheus:/etc/prometheus:ro"
-          -v "$PWD/deploy/secrets:/run/secrets:ro"
+          -v "$PWD/deploy/secrets/promotion_radar_metrics_token:/run/secrets/promotion_radar_metrics_token:ro"
           --entrypoint /bin/promtool
           prom/prometheus:v3.13.1
           check config /etc/prometheus/prometheus.example.yml
