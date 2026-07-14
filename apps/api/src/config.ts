@@ -96,5 +96,11 @@ export const config = {
   channelConfigEncryptionKey,
   outboundHttpTimeoutMs: readNumber('OUTBOUND_HTTP_TIMEOUT_MS', 10_000),
   outboundAllowHttp: readBoolean('ALLOW_INSECURE_OUTBOUND_HTTP', !isProduction),
-  allowedPrivateOutboundHosts: readList('ALLOW_PRIVATE_OUTBOUND_HOSTS', []).map((host) => host.toLowerCase())
+  allowedPrivateOutboundHosts: readList('ALLOW_PRIVATE_OUTBOUND_HOSTS', []).map((host) => host.toLowerCase()),
+  dispatchAttempts: Math.max(1, Math.floor(readNumber('DISPATCH_ATTEMPTS', 5))),
+  dispatchBackoffMs: Math.max(1_000, Math.floor(readNumber('DISPATCH_BACKOFF_MS', 10_000))),
+  dispatchConcurrency: Math.max(1, Math.floor(readNumber('DISPATCH_CONCURRENCY', 8))),
+  dispatchCompletedRetentionSeconds: Math.max(3_600, Math.floor(readNumber('DISPATCH_COMPLETED_RETENTION_SECONDS', 604_800))),
+  dispatchFailedRetentionSeconds: Math.max(3_600, Math.floor(readNumber('DISPATCH_FAILED_RETENTION_SECONDS', 1_209_600))),
+  dispatchRetentionCount: Math.max(100, Math.floor(readNumber('DISPATCH_RETENTION_COUNT', 10_000)))
 };
