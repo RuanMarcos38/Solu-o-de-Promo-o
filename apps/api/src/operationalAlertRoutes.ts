@@ -5,8 +5,13 @@ import {
   monitorDlqThreshold,
   operationalAlertQueueStatus
 } from './operationalAlerts.js';
+import { operationalAlertsQueue } from './queue.js';
 
 export async function registerOperationalAlertRoutes(app: FastifyInstance) {
+  app.addHook('onClose', async () => {
+    await operationalAlertsQueue.close();
+  });
+
   app.get('/admin/operational-alerts/status', async (request) => {
     await requireAdmin(request);
     return operationalAlertQueueStatus();
