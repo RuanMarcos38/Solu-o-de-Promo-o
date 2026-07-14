@@ -24,6 +24,16 @@ import {
   type DispatchJobData,
   type OperationalAlertQueueData
 } from './queue.js';
+import {
+  closeMetricsServer,
+  initializeOpenTelemetry,
+  observeQueueJob,
+  recordDispatchAttempt,
+  recordOperationalAlertDelivery,
+  refreshQueueMetrics,
+  shutdownOpenTelemetry,
+  startWorkerMetricsServer
+} from './telemetry.js';
 import type { MarketplaceName } from './types.js';
 
 type CollectJobData = {
@@ -31,9 +41,11 @@ type CollectJobData = {
   marketplace?: MarketplaceName;
 };
 
+await initializeOpenTelemetry('worker');
+
 const collectionWorker = new Worker<CollectJobData>(
   COLLECT_QUEUE_NAME,
-  async (job) => {
+  async (job) => observeQueueJob(COLLECT_QUEUE_NAME, job, async () => {
     const result = await runCollection(job.data);
     const stats = await getStats();
     await publishCollectionCompleted({ offers: result.approved, stats });
@@ -42,16 +54,24 @@ const collectionWorker = new Worker<CollectJobData>(
       errorCount: result.errors.length,
       stats
     };
-  },
+  }),
   { connection: queueConnection, concurrency: 3 }
 );
 
 const dispatchWorker = new Worker<DispatchJobData>(
   DISPATCH_QUEUE_NAME,
-  async (job) => {
+  async (job) => observeQueueJob(DISPATCH_QUEUE_NAME, job, async () => {
+    const channel = await prisma.dispatchChannel.findUnique({
+      where: { id: job.data.channelId },
+      select: { type: true }
+    });
+    const channelType = channel?.type || 'unknown';
     try {
-      return await processDispatchJob(job);
+      const result = await processDispatchJob(job);
+      recordDispatchAttempt(channelType, result.status === 'sent' || result.status === 'already-sent');
+      return result;
     } catch (error) {
+      recordDispatchAttempt(channelType, false);
       const maxAttempts = Number(job.opts.attempts ?? 1);
       const isFinalAttempt = job.attemptsMade + 1 >= maxAttempts;
       if (isFinalAttempt) {
@@ -60,13 +80,26 @@ const dispatchWorker = new Worker<DispatchJobData>(
       }
       throw error;
     }
-  },
+  }),
   { connection: queueConnection, concurrency: config.dispatchConcurrency }
 );
 
 const operationalAlertWorker = new Worker<OperationalAlertQueueData>(
   OPERATIONAL_ALERT_QUEUE_NAME,
-  processOperationalAlertDelivery,
+  async (job) => observeQueueJob(OPERATIONAL_ALERT_QUEUE_NAME, job, async () => {
+    try {
+      const result = await processOperationalAlertDelivery(job);
+      if (job.data.type === 'delivery') {
+        recordOperationalAlertDelivery(job.data.channel, job.data.alert.kind, true);
+      }
+      return result;
+    } catch (error) {
+      if (job.data.type === 'delivery') {
+        recordOperationalAlertDelivery(job.data.channel, job.data.alert.kind, false);
+      }
+      throw error;
+    }
+  }),
   { connection: queueConnection, concurrency: operationalConfig.concurrency }
 );
 
@@ -96,6 +129,15 @@ operationalAlertWorker.on('failed', (job, error) => {
   console.error(`[worker:operational-alert] job ${job?.id} failed`, error);
 });
 
+const workerMetricsServer = await startWorkerMetricsServer(async () => {
+  await refreshQueueMetrics({
+    'collect-offers': collectOffersQueue,
+    'dispatch-offers': dispatchOffersQueue,
+    'dispatch-dead-letter': dispatchDeadLetterQueue,
+    'operational-alerts': operationalAlertsQueue
+  });
+});
+
 await collectOffersQueue.add('collect', {}, {
   jobId: 'recurring-default-collection',
   repeat: { every: config.collectIntervalSeconds * 1000 },
@@ -112,7 +154,7 @@ if (operationalConfig.enabled) {
   console.log(`[worker] operational alerts enabled for ${operationalConfig.channels.join(', ')}`);
 }
 
-console.log('[worker] collection, dispatch and operational alert workers running');
+console.log('[worker] collection, dispatch, operational alert and observability services running');
 
 let shuttingDown = false;
 
@@ -128,6 +170,7 @@ async function shutdown(signal: string) {
   forceExit.unref();
 
   try {
+    await closeMetricsServer(workerMetricsServer);
     await Promise.all([
       collectionWorker.close(),
       dispatchWorker.close(),
@@ -141,6 +184,7 @@ async function shutdown(signal: string) {
     ]);
     await prisma.$disconnect();
     if (connection.status !== 'end') await connection.quit();
+    await shutdownOpenTelemetry();
     clearTimeout(forceExit);
     process.exit(0);
   } catch (error) {
