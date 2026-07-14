@@ -265,6 +265,7 @@ Veja os guias:
 - `docs/GO_LIVE_CHECKLIST.md` — checklist final antes de publicar.
 - `docs/DEPLOY_PRODUCTION.md` — guia geral de produção.
 - `docs/EASYPANEL_DEPLOY.md` — passo a passo para EasyPanel.
+- `docs/DEPLOY_DEVOPS.md` — deploy endurecido com Caddy, TLS automático, domínios, GHCR, SSO do Grafana, backups e rollback.
 
 ## Variáveis importantes
 
