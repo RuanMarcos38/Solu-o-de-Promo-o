@@ -131,13 +131,13 @@ services:
     volumes:
       - ./ops/alertmanager/generated/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ./ops/alertmanager/templates:/etc/alertmanager/templates:ro
-      - ./ops/observability/secrets:/run/secrets:ro
       - alertmanager_data:/alertmanager
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9093/-/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+    secrets:
+      - alertmanager_smtp_password
+      - alertmanager_telegram_bot_token
+      - alertmanager_primary_webhook_url
+      - alertmanager_secondary_webhook_url
+      - alertmanager_warning_webhook_url
     security_opt:
       - no-new-privileges:true
 
@@ -156,20 +156,16 @@ services:
     volumes:
       - ./ops/prometheus/prometheus.example.yml:/etc/prometheus/prometheus.yml:ro
       - ./ops/prometheus/rules:/etc/prometheus/rules:ro
-      - ./ops/observability/secrets/promotion_radar_metrics_token:/run/secrets/promotion_radar_metrics_token:ro
       - prometheus_data:/prometheus
+    secrets:
+      - promotion_radar_metrics_token
     depends_on:
       api:
         condition: service_healthy
       worker:
         condition: service_started
       alertmanager:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+        condition: service_started
     security_opt:
       - no-new-privileges:true
 
@@ -191,16 +187,12 @@ services:
     volumes:
       - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - ./ops/observability/secrets/grafana_admin_password:/run/secrets/grafana_admin_password:ro
       - grafana_data:/var/lib/grafana
+    secrets:
+      - grafana_admin_password
     depends_on:
       prometheus:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q ok"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
+        condition: service_started
     security_opt:
       - no-new-privileges:true
 
@@ -210,3 +202,19 @@ volumes:
   prometheus_data:
   alertmanager_data:
   grafana_data:
+
+secrets:
+  promotion_radar_metrics_token:
+    file: ./ops/observability/secrets/promotion_radar_metrics_token
+  grafana_admin_password:
+    file: ./ops/observability/secrets/grafana_admin_password
+  alertmanager_smtp_password:
+    file: ./ops/observability/secrets/alertmanager_smtp_password
+  alertmanager_telegram_bot_token:
+    file: ./ops/observability/secrets/alertmanager_telegram_bot_token
+  alertmanager_primary_webhook_url:
+    file: ./ops/observability/secrets/alertmanager_primary_webhook_url
+  alertmanager_secondary_webhook_url:
+    file: ./ops/observability/secrets/alertmanager_secondary_webhook_url
+  alertmanager_warning_webhook_url:
+    file: ./ops/observability/secrets/alertmanager_warning_webhook_url
