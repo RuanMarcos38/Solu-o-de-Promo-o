@@ -17,13 +17,18 @@
     "prisma:deploy": "prisma migrate deploy",
     "lint": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --import tsx --import ./test/setup.ts --test --test-concurrency=1 test/scoring.test.ts test/secrets.test.ts test/http.test.ts test/dispatch.test.ts test/operationalAlerts.test.ts",
-    "test:integration": "node --import tsx --import ./test/setup.ts --test --test-concurrency=1 test/integration.test.ts test/dispatchOperations.integration.test.ts test/operationalAlerts.integration.test.ts",
-    "test:coverage": "node --import tsx --import ./test/setup.ts --experimental-test-coverage --test --test-concurrency=1 test/scoring.test.ts test/secrets.test.ts test/http.test.ts test/dispatch.test.ts test/operationalAlerts.test.ts test/integration.test.ts test/dispatchOperations.integration.test.ts test/operationalAlerts.integration.test.ts"
+    "test:unit": "node --import tsx --import ./test/setup.ts --test --test-concurrency=1 test/scoring.test.ts test/secrets.test.ts test/http.test.ts test/dispatch.test.ts test/operationalAlerts.test.ts test/observability.test.ts",
+    "test:integration": "node --import tsx --import ./test/setup.ts --test --test-concurrency=1 test/integration.test.ts test/dispatchOperations.integration.test.ts test/operationalAlerts.integration.test.ts test/observability.integration.test.ts",
+    "test:coverage": "node --import tsx --import ./test/setup.ts --experimental-test-coverage --test --test-concurrency=1 test/scoring.test.ts test/secrets.test.ts test/http.test.ts test/dispatch.test.ts test/operationalAlerts.test.ts test/observability.test.ts test/integration.test.ts test/dispatchOperations.integration.test.ts test/operationalAlerts.integration.test.ts test/observability.integration.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "11.0.1",
     "@fastify/rate-limit": "10.2.2",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.203.0",
+    "@opentelemetry/resources": "2.0.1",
+    "@opentelemetry/sdk-node": "0.203.0",
+    "@opentelemetry/sdk-trace-base": "2.0.1",
     "@prisma/client": "6.19.3",
     "bcryptjs": "3.0.2",
     "bullmq": "5.80.2",
@@ -32,6 +37,7 @@
     "ioredis": "5.8.2",
     "jsonwebtoken": "9.0.2",
     "nodemailer": "9.0.1",
+    "prom-client": "15.1.3",
     "socket.io": "4.8.1",
     "zod": "3.24.1"
   },
