@@ -77,5 +77,6 @@ export const config = {
   adminName: process.env.ADMIN_NAME ?? 'Administrador',
   bootstrapAdminEnabled,
   outboundHttpTimeoutMs: readNumber('OUTBOUND_HTTP_TIMEOUT_MS', 10_000),
+  outboundAllowHttp: readBoolean('ALLOW_INSECURE_OUTBOUND_HTTP', !isProduction),
   allowedPrivateOutboundHosts: readList('ALLOW_PRIVATE_OUTBOUND_HOSTS', []).map((host) => host.toLowerCase())
 };
