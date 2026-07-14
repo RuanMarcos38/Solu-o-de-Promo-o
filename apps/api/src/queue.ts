@@ -5,6 +5,7 @@ import { config } from './config.js';
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const parsedRedisUrl = new URL(redisUrl);
 const database = Number(parsedRedisUrl.pathname.replace(/^\//, '') || '0');
+const lazyConnect = process.env.NODE_ENV === 'test';
 
 export const queueConnection: ConnectionOptions = {
   host: parsedRedisUrl.hostname,
@@ -13,11 +14,13 @@ export const queueConnection: ConnectionOptions = {
   ...(parsedRedisUrl.password ? { password: decodeURIComponent(parsedRedisUrl.password) } : {}),
   db: Number.isInteger(database) ? database : 0,
   maxRetriesPerRequest: null,
+  lazyConnect,
   ...(parsedRedisUrl.protocol === 'rediss:' ? { tls: {} } : {})
 };
 
 export const connection = new Redis(redisUrl, {
-  maxRetriesPerRequest: null
+  maxRetriesPerRequest: null,
+  lazyConnect
 });
 
 export const COLLECT_QUEUE_NAME = 'collect-offers';
