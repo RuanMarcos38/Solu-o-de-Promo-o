@@ -57,7 +57,7 @@ export const observabilityConfig = {
   metricsBearerToken,
   workerMetricsHost: process.env.WORKER_METRICS_HOST || '0.0.0.0',
   workerMetricsPort,
-  collectDefaultMetrics: readBoolean('METRICS_COLLECT_DEFAULTS', true),
+  collectDefaultMetrics: readBoolean('METRICS_COLLECT_DEFAULTS', nodeEnv !== 'test'),
   otelEnabled: readBoolean('OTEL_ENABLED', false),
   otelEndpoint,
   otelServiceName: process.env.OTEL_SERVICE_NAME || 'promotion-radar',
