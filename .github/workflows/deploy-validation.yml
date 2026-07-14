@@ -75,16 +75,20 @@ jobs:
       - name: Production compose validation
         run: docker compose --env-file .env.production -f compose.production.yml config --quiet
 
-      - name: Caddyfile adaptation validation
-        run: >-
-          docker run --rm
-          -e APP_DOMAIN=ofertas.example.net
-          -e API_DOMAIN=api.ofertas.example.net
-          -e GRAFANA_DOMAIN=grafana.ofertas.example.net
-          -e TLS_EMAIL=admin@example.net
-          -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
-          caddy:2-alpine
-          adapt --config /etc/caddy/Caddyfile --adapter caddyfile --pretty
+      - name: Capture Caddyfile adaptation
+        run: |
+          set +e
+          docker run --rm \
+            -e APP_DOMAIN=ofertas.example.net \
+            -e API_DOMAIN=api.ofertas.example.net \
+            -e GRAFANA_DOMAIN=grafana.ofertas.example.net \
+            -e TLS_EMAIL=admin@example.net \
+            -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine \
+            adapt --config /etc/caddy/Caddyfile --adapter caddyfile --pretty \
+            > caddy-adapt.json 2> caddy-adapt.stderr
+          echo $? > caddy-adapt.exit-code
+          exit 0
 
       - name: Alertmanager configuration validation
         run: >-
@@ -103,3 +107,18 @@ jobs:
           --entrypoint /bin/promtool
           prom/prometheus:v3.13.1
           check config /etc/prometheus/prometheus.example.yml
+
+      - name: Upload deploy validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-validation-diagnostics
+          path: |
+            caddy-adapt.json
+            caddy-adapt.stderr
+            caddy-adapt.exit-code
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail when Caddyfile adaptation fails
+        run: test "$(cat caddy-adapt.exit-code)" = "0"
