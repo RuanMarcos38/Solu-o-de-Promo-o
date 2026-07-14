@@ -1,17 +1,13 @@
 import assert from 'node:assert/strict';
-import { after, describe, test } from 'node:test';
+import { describe, test } from 'node:test';
 import { operationalConfig } from '../src/operationalConfig.js';
-import { formatOperationalAlert, operationalAlertStatus } from '../src/operationalAlerts.js';
 import {
-  collectOffersQueue,
-  connection,
-  dispatchDeadLetterQueue,
-  dispatchOffersQueue,
-  operationalAlertsQueue,
-  type OperationalAlert
-} from '../src/queue.js';
+  formatOperationalAlert,
+  operationalAlertStatus,
+  type OperationalAlertContent
+} from '../src/operationalAlertRules.js';
 
-const alert: OperationalAlert = {
+const alert: OperationalAlertContent = {
   kind: 'dlq-threshold',
   severity: 'critical',
   title: 'DLQ atingiu o limite crítico',
@@ -20,16 +16,6 @@ const alert: OperationalAlert = {
   occurredAt: '2026-07-14T17:00:00.000Z',
   details: { total: 8, threshold: 5 }
 };
-
-after(async () => {
-  await Promise.all([
-    collectOffersQueue.close(),
-    dispatchOffersQueue.close(),
-    dispatchDeadLetterQueue.close(),
-    operationalAlertsQueue.close()
-  ]);
-  if (connection.status !== 'end') await connection.quit();
-});
 
 describe('alertas operacionais', () => {
   test('formata uma mensagem legível para administradores', () => {
