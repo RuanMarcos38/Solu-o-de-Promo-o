@@ -90,6 +90,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-promo}:${POSTGRES_PASSWORD:-promo-local-db}@postgres:5432/${POSTGRES_DB:-promo_db}?schema=public
       REDIS_URL: redis://:${REDIS_PASSWORD:-promo-local-redis}@redis:6379
     command: ["npm", "run", "start:worker", "-w", "apps/api"]
+    ports:
+      - "${WORKER_METRICS_BIND_ADDRESS:-127.0.0.1}:${WORKER_METRICS_PORT:-9464}:${WORKER_METRICS_PORT:-9464}"
     depends_on:
       migrate:
         condition: service_completed_successfully
