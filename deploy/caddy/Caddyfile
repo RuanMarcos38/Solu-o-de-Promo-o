@@ -1,7 +1,6 @@
 {
   email {$TLS_EMAIL}
   admin off
-  auto_https disable_redirects
   servers {
     protocols h1 h2 h3
   }
