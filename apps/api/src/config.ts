@@ -29,6 +29,7 @@ const jwtSecret = process.env.JWT_SECRET ?? 'change-me-in-production';
 const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@promoradar.local';
 const adminPassword = process.env.ADMIN_PASSWORD ?? 'admin123456';
 const bootstrapAdminEnabled = readBoolean('BOOTSTRAP_ADMIN_ENABLED', !isProduction);
+const channelConfigEncryptionKey = process.env.CHANNEL_CONFIG_ENCRYPTION_KEY ?? Buffer.alloc(32).toString('base64');
 
 for (const origin of frontendOrigins) {
   const parsed = new URL(origin);
@@ -41,10 +42,25 @@ if (frontendOrigins.some((origin) => origin === '*')) {
   throw new Error('FRONTEND_ORIGINS não pode usar wildcard');
 }
 
+let decodedEncryptionKey: Buffer;
+try {
+  decodedEncryptionKey = Buffer.from(channelConfigEncryptionKey, 'base64');
+} catch {
+  throw new Error('CHANNEL_CONFIG_ENCRYPTION_KEY precisa estar em base64');
+}
+
+if (decodedEncryptionKey.length !== 32) {
+  throw new Error('CHANNEL_CONFIG_ENCRYPTION_KEY precisa representar exatamente 32 bytes');
+}
+
 if (isProduction) {
   const insecureJwt = jwtSecret.length < 32 || /change-me|troque-por|secret/i.test(jwtSecret);
   if (insecureJwt) {
     throw new Error('JWT_SECRET precisa ter pelo menos 32 caracteres aleatórios em produção');
+  }
+
+  if (!process.env.CHANNEL_CONFIG_ENCRYPTION_KEY) {
+    throw new Error('CHANNEL_CONFIG_ENCRYPTION_KEY é obrigatória em produção');
   }
 
   if (bootstrapAdminEnabled) {
@@ -76,6 +92,7 @@ export const config = {
   adminPassword,
   adminName: process.env.ADMIN_NAME ?? 'Administrador',
   bootstrapAdminEnabled,
+  channelConfigEncryptionKey,
   outboundHttpTimeoutMs: readNumber('OUTBOUND_HTTP_TIMEOUT_MS', 10_000),
   outboundAllowHttp: readBoolean('ALLOW_INSECURE_OUTBOUND_HTTP', !isProduction),
   allowedPrivateOutboundHosts: readList('ALLOW_PRIVATE_OUTBOUND_HOSTS', []).map((host) => host.toLowerCase())
