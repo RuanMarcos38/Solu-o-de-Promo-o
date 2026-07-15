@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1.7
+
+FROM prom/alertmanager:v0.33.1 AS upstream
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates gettext \
+  && addgroup -S alertmanager \
+  && adduser -S -G alertmanager alertmanager
+
+COPY --from=upstream /bin/alertmanager /usr/local/bin/alertmanager
+COPY --from=upstream /bin/amtool /usr/local/bin/amtool
+COPY ops/alertmanager/templates /etc/alertmanager/templates
+COPY deploy/easypanel/alertmanager.yml.tmpl /etc/alertmanager/alertmanager.yml.tmpl
+COPY deploy/easypanel/alertmanager-entrypoint.sh /usr/local/bin/alertmanager-entrypoint
+
+RUN chmod 0755 /usr/local/bin/alertmanager-entrypoint \
+  && mkdir -p /etc/alertmanager/generated /alertmanager \
+  && chown -R alertmanager:alertmanager /etc/alertmanager /alertmanager
+
+USER alertmanager
+EXPOSE 9093
+ENTRYPOINT ["/usr/local/bin/alertmanager-entrypoint"]
