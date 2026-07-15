@@ -1,0 +1,50 @@
+name: EasyPanel Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: easypanel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Static validation
+        run: node scripts/validate-easypanel.mjs
+
+      - name: Build API image
+        run: docker build -f Dockerfile -t promotion-radar-api:easypanel .
+
+      - name: Build worker image
+        run: docker build -f Dockerfile.worker -t promotion-radar-worker:easypanel .
+
+      - name: Build web image
+        run: |
+          docker build \
+            -f Dockerfile.web \
+            --build-arg VITE_API_URL=https://api-ofertas.r2rmarketingdigital.com.br \
+            -t promotion-radar-web:easypanel .
+
+      - name: Inspect image defaults
+        run: |
+          docker image inspect promotion-radar-api:easypanel --format '{{json .Config.Cmd}}' | grep -q 'prisma:deploy'
+          docker image inspect promotion-radar-worker:easypanel --format '{{json .Config.Cmd}}' | grep -q 'start:worker'
+          docker image inspect promotion-radar-web:easypanel --format '{{json .Config.Healthcheck.Test}}' | grep -q '/health'
