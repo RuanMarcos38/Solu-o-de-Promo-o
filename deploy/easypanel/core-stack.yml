@@ -85,6 +85,8 @@ services:
     image: promotion-radar-worker:${IMAGE_TAG}
     env_file:
       - /root/promotion-radar/application.env
+    environment:
+      BOOTSTRAP_ADMIN_ENABLED: "false"
     networks:
       promotion-radar-internal:
         aliases: [worker]
