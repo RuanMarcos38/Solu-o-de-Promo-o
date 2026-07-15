@@ -1,0 +1,7 @@
+FROM prom/prometheus:v3.13.1
+
+COPY ops/prometheus/prometheus.example.yml /etc/prometheus/prometheus.yml
+COPY ops/prometheus/rules /etc/prometheus/rules
+
+EXPOSE 9090
+CMD ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=30d", "--web.enable-lifecycle"]
