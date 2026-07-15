@@ -1,0 +1,140 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    env_file:
+      - /root/promotion-radar/postgres.env
+    volumes:
+      - promotion_radar_postgres:/var/lib/postgresql/data
+    networks:
+      promotion-radar-internal:
+        aliases: [postgres]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promo -d promo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 384M
+
+  redis:
+    image: redis:7.4-alpine
+    env_file:
+      - /root/promotion-radar/redis.env
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - promotion_radar_redis:/data
+    networks:
+      promotion-radar-internal:
+        aliases: [redis]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 128M
+
+  api:
+    image: promotion-radar-api:${IMAGE_TAG}
+    env_file:
+      - /root/promotion-radar/application.env
+    networks:
+      promotion-radar-internal:
+        aliases: [api]
+      easypanel: {}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3333/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+      resources:
+        limits:
+          memory: 512M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=easypanel
+        - traefik.http.middlewares.promotion-radar-api-redirect.redirectscheme.scheme=https
+        - traefik.http.routers.promotion-radar-api-http.rule=Host(`api-ofertas.r2rmarketingdigital.com.br`)
+        - traefik.http.routers.promotion-radar-api-http.entrypoints=http
+        - traefik.http.routers.promotion-radar-api-http.middlewares=promotion-radar-api-redirect@docker
+        - traefik.http.routers.promotion-radar-api-http.service=promotion-radar-api
+        - traefik.http.routers.promotion-radar-api-https.rule=Host(`api-ofertas.r2rmarketingdigital.com.br`)
+        - traefik.http.routers.promotion-radar-api-https.entrypoints=https
+        - traefik.http.routers.promotion-radar-api-https.tls=true
+        - traefik.http.routers.promotion-radar-api-https.tls.certresolver=letsencrypt
+        - traefik.http.routers.promotion-radar-api-https.service=promotion-radar-api
+        - traefik.http.services.promotion-radar-api.loadbalancer.server.port=3333
+
+  worker:
+    image: promotion-radar-worker:${IMAGE_TAG}
+    env_file:
+      - /root/promotion-radar/application.env
+    networks:
+      promotion-radar-internal:
+        aliases: [worker]
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+      resources:
+        limits:
+          memory: 512M
+
+  web:
+    image: promotion-radar-web:${IMAGE_TAG}
+    networks:
+      easypanel: {}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 96M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=easypanel
+        - traefik.http.middlewares.promotion-radar-web-redirect.redirectscheme.scheme=https
+        - traefik.http.routers.promotion-radar-web-http.rule=Host(`ofertas.r2rmarketingdigital.com.br`)
+        - traefik.http.routers.promotion-radar-web-http.entrypoints=http
+        - traefik.http.routers.promotion-radar-web-http.middlewares=promotion-radar-web-redirect@docker
+        - traefik.http.routers.promotion-radar-web-http.service=promotion-radar-web
+        - traefik.http.routers.promotion-radar-web-https.rule=Host(`ofertas.r2rmarketingdigital.com.br`)
+        - traefik.http.routers.promotion-radar-web-https.entrypoints=https
+        - traefik.http.routers.promotion-radar-web-https.tls=true
+        - traefik.http.routers.promotion-radar-web-https.tls.certresolver=letsencrypt
+        - traefik.http.routers.promotion-radar-web-https.service=promotion-radar-web
+        - traefik.http.services.promotion-radar-web.loadbalancer.server.port=80
+
+networks:
+  easypanel:
+    external: true
+  promotion-radar-internal:
+    driver: overlay
+    attachable: true
+
+volumes:
+  promotion_radar_postgres:
+  promotion_radar_redis:
