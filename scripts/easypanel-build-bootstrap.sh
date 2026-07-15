@@ -24,8 +24,10 @@ if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" fetch origin --prune
   git -C "$APP_DIR" checkout "$BRANCH"
   git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+elif [ -e "$APP_DIR" ]; then
+  echo "A pasta $APP_DIR já existe e não é um repositório Git. Nada foi removido." >&2
+  exit 1
 else
-  rm -rf "$APP_DIR"
   git clone --branch "$BRANCH" --single-branch "$REPOSITORY" "$APP_DIR"
 fi
 
