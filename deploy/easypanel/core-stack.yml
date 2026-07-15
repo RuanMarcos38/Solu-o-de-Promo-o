@@ -45,7 +45,7 @@ services:
           memory: 128M
 
   api:
-    image: promotion-radar-api:current
+    image: promotion-radar-api:${IMAGE_TAG}
     env_file:
       - /root/promotion-radar/application.env
     networks:
@@ -82,7 +82,7 @@ services:
         - traefik.http.services.promotion-radar-api.loadbalancer.server.port=3333
 
   worker:
-    image: promotion-radar-worker:current
+    image: promotion-radar-worker:${IMAGE_TAG}
     env_file:
       - /root/promotion-radar/application.env
     networks:
@@ -98,7 +98,7 @@ services:
           memory: 512M
 
   web:
-    image: promotion-radar-web:current
+    image: promotion-radar-web:${IMAGE_TAG}
     networks:
       easypanel: {}
     healthcheck:
