@@ -1,0 +1,81 @@
+name: Assemble Hero Media
+
+on:
+  push:
+    branches:
+      - feature/hero-video-background
+    paths:
+      - '.github/media-parts/**'
+      - '.github/workflows/assemble-hero-media.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: assemble-hero-media-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  assemble:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/hero-video-background
+          fetch-depth: 0
+
+      - name: Assemble and verify optimized media
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p apps/web/public/media
+
+          cat .github/media-parts/hero-video-*.b64 \
+            | tr -d '\n\r ' \
+            | base64 --decode \
+            > apps/web/public/media/hero-background.mp4
+
+          cat .github/media-parts/hero-poster-*.b64 \
+            | tr -d '\n\r ' \
+            | base64 --decode \
+            > apps/web/public/media/hero-poster.jpg
+
+          test -s apps/web/public/media/hero-background.mp4
+          test -s apps/web/public/media/hero-poster.jpg
+
+          test "$(stat -c%s apps/web/public/media/hero-background.mp4)" -eq 50874
+          test "$(stat -c%s apps/web/public/media/hero-poster.jpg)" -eq 7109
+
+          echo 'bfb3e8fd2f2586a867cfb5c10a869e1c09e71f06eddf3a05205d81b1cb06e603  apps/web/public/media/hero-background.mp4' | sha256sum --check
+          echo '0c2f51ecebd8fe7baa52428fdec65afb5a061fc08fe7527d42d9eead6c6c7ecb  apps/web/public/media/hero-poster.jpg' | sha256sum --check
+
+          file apps/web/public/media/hero-background.mp4
+          file apps/web/public/media/hero-poster.jpg
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate frontend build
+        run: npm run build -w apps/web
+
+      - name: Remove temporary transfer files
+        shell: bash
+        run: |
+          rm -rf .github/media-parts
+          rm -f .github/workflows/assemble-hero-media.yml
+
+      - name: Commit generated media
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git add -A
+          git commit -m 'feat: add optimized hero background media'
+          git push origin HEAD:feature/hero-video-background
