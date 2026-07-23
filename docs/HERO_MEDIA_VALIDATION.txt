@@ -1,0 +1,10 @@
+Hero media assembly validation
+video_decode_status=0
+poster_decode_status=1
+video_size=50874
+poster_size=6748
+975cf9742a2067e9ed5c54ef8e61cd12f92f4fcdb1665296a42c7fd358600a79  apps/web/public/media/hero-background.mp4
+688d47db934cc6487e4a9826ed12f9e61677dd815e9a0891963ea041c326fd37  apps/web/public/media/hero-poster.jpg
+apps/web/public/media/hero-background.mp4: ISO Media, MP4 Base Media v1 [ISO 14496-12:2003]
+apps/web/public/media/hero-poster.jpg:     JPEG image data, baseline, precision 8, 640x360, components 3
+ffprobe=unavailable
