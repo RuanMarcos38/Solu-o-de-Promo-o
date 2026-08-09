@@ -24,6 +24,12 @@ export async function registerMarketplaceEventBridge(io: Server) {
     retryStrategy: () => null
   });
 
+  subscriber.on('error', (error) => {
+    console.warn('[redis] event subscriber unavailable', {
+      message: error instanceof Error ? error.message : String(error)
+    });
+  });
+
   let timeout: NodeJS.Timeout | undefined;
   try {
     await Promise.race([
