@@ -28,4 +28,6 @@ COPY --from=build --chown=node:node /app/node_modules node_modules
 
 USER node
 EXPOSE 3333
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.API_PORT || '3333') + '/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"
 CMD ["npm", "run", "start", "-w", "apps/api"]
