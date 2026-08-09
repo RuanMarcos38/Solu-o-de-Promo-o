@@ -206,13 +206,24 @@ export async function createApp() {
     });
   });
 
-  const subscriber = await registerMarketplaceEventBridge(io);
+  let subscriber: Awaited<ReturnType<typeof registerMarketplaceEventBridge>> | null = null;
+  try {
+    subscriber = await registerMarketplaceEventBridge(io);
+  } catch (error) {
+    app.log.warn({ err: error }, 'Redis event bridge unavailable; API started in degraded mode');
+  }
   await ensureAdminUser();
   await ensureDefaultSources();
 
   app.addHook('onClose', async () => {
     io.close();
-    if (subscriber.status !== 'end') await subscriber.quit();
+    if (subscriber?.status !== 'end') {
+      try {
+        await subscriber?.quit();
+      } catch {
+        subscriber?.disconnect();
+      }
+    }
   });
 
   app.get('/health', async () => ({ status: 'ok', service: 'promotion-radar-api' }));
