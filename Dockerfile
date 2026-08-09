@@ -28,4 +28,4 @@ COPY --from=build --chown=node:node /app/node_modules node_modules
 
 USER node
 EXPOSE 3333
-CMD ["sh", "-c", "npm run prisma:deploy -w apps/api && npm run start -w apps/api"]
+CMD ["npm", "run", "start", "-w", "apps/api"]
