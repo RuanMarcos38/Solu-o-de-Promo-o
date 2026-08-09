@@ -7,7 +7,9 @@ import { operationalConfig, type OperationalAlertChannel } from './operationalCo
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const parsedRedisUrl = new URL(redisUrl);
 const database = Number(parsedRedisUrl.pathname.replace(/^\//, '') || '0');
-const lazyConnect = process.env.NODE_ENV === 'test';
+// Queue clients must not make API startup depend on Redis. The worker and queue
+// endpoints connect on first use, while /ready still reports Redis availability.
+const lazyConnect = true;
 
 export const queueConnection: ConnectionOptions = {
   host: parsedRedisUrl.hostname,
@@ -23,6 +25,14 @@ export const queueConnection: ConnectionOptions = {
 export const connection = new Redis(redisUrl, {
   maxRetriesPerRequest: null,
   lazyConnect
+});
+
+connection.on('error', (error) => {
+  if (process.env.NODE_ENV !== 'test') {
+    console.warn('[redis] connection unavailable', {
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
 });
 
 export const COLLECT_QUEUE_NAME = 'collect-offers';
@@ -60,11 +70,32 @@ export type OperationalAlertQueueData =
   | { type: 'delivery'; channel: OperationalAlertChannel; alert: OperationalAlert }
   | { type: 'monitor' };
 
-export const collectOffersQueue = new Queue(COLLECT_QUEUE_NAME, {
-  connection: queueConnection
-});
+function createLazyQueue<T>(factory: () => Queue<T>) {
+  let instance: Queue<T> | null = null;
 
-export const dispatchOffersQueue = new Queue<DispatchJobData>(DISPATCH_QUEUE_NAME, {
+  return new Proxy({} as Queue<T>, {
+    get(_target, property) {
+      if (property === 'close') {
+        return async () => {
+          if (!instance) return;
+          const queue = instance;
+          instance = null;
+          await queue.close();
+        };
+      }
+
+      instance ??= factory();
+      const value = Reflect.get(instance, property, instance);
+      return typeof value === 'function' ? value.bind(instance) : value;
+    }
+  });
+}
+
+export const collectOffersQueue = createLazyQueue(() => new Queue(COLLECT_QUEUE_NAME, {
+  connection: queueConnection
+}));
+
+export const dispatchOffersQueue = createLazyQueue(() => new Queue<DispatchJobData>(DISPATCH_QUEUE_NAME, {
   connection: queueConnection,
   defaultJobOptions: {
     attempts: config.dispatchAttempts,
@@ -78,15 +109,15 @@ export const dispatchOffersQueue = new Queue<DispatchJobData>(DISPATCH_QUEUE_NAM
       count: config.dispatchRetentionCount
     }
   }
-});
+}));
 
-export const dispatchDeadLetterQueue = new Queue<DispatchDeadLetterData>(DISPATCH_DLQ_NAME, {
+export const dispatchDeadLetterQueue = createLazyQueue(() => new Queue<DispatchDeadLetterData>(DISPATCH_DLQ_NAME, {
   connection: queueConnection,
   defaultJobOptions: {
     removeOnComplete: false,
     removeOnFail: false
   }
-});
+}));
 
 let operationalAlertsQueueInstance: Queue<OperationalAlertQueueData> | null = null;
 
