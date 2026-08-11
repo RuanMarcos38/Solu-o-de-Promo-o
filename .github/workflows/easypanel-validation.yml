@@ -54,7 +54,9 @@ jobs:
 
       - name: Inspect image defaults
         run: |
-          docker image inspect promotion-radar-api:easypanel --format '{{json .Config.Cmd}}' | grep -q 'prisma:deploy'
+          api_cmd="$(docker image inspect promotion-radar-api:easypanel --format '{{json .Config.Cmd}}')"
+          grep -q '"start"' <<<"$api_cmd"
+          ! grep -q 'prisma:deploy' <<<"$api_cmd"
           docker image inspect promotion-radar-worker:easypanel --format '{{json .Config.Cmd}}' | grep -q 'start:worker'
           docker image inspect promotion-radar-web:easypanel --format '{{json .Config.Healthcheck.Test}}' | grep -q '/health'
           docker image inspect promotion-radar-prometheus:easypanel --format '{{json .Config.Cmd}}' | grep -q 'prometheus.yml'
