@@ -2,7 +2,7 @@
 
 Arquivos deste pacote:
 
-- `../../Dockerfile` — API com `prisma migrate deploy` e porta 3333;
+- `../../Dockerfile` — API resiliente, healthcheck de vida e porta 3333;
 - `../../Dockerfile.worker` — worker BullMQ e métricas internas na porta 9464;
 - `../../Dockerfile.web` — frontend Nginx na porta 80;
 - `../../Dockerfile.prometheus` — Prometheus com regras e targets internos;

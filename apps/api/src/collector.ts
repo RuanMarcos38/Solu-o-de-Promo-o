@@ -1,11 +1,12 @@
 import { getAdapter } from './adapters/index.js';
-import { config } from './config.js';
 import { dispatchOffers } from './dispatch.js';
 import { upsertOffers } from './offerStore.js';
+import { getPlatformSettings } from './runtimeSettings.js';
 import { getCollectionTargets } from './sources.js';
 import type { MarketplaceName } from './types.js';
 
 export async function runCollection(options?: { keyword?: string; marketplace?: MarketplaceName }) {
+  const { settings } = await getPlatformSettings();
   const targets = await getCollectionTargets(options);
   const approved = [];
   const errors = [];
@@ -18,19 +19,22 @@ export async function runCollection(options?: { keyword?: string; marketplace?: 
     }
 
     try {
-      const found = await adapter.search({ keyword: target.keyword, limit: config.maxResultsPerSource });
-      const saved = await upsertOffers(found);
+      const found = await adapter.search({ keyword: target.keyword, limit: settings.collection.maxResultsPerSource });
+      const saved = await upsertOffers(found, settings.qualification);
       approved.push(...saved);
     } catch (error) {
       errors.push({ marketplace: adapter.name, keyword: target.keyword, error: error instanceof Error ? error.message : 'Erro desconhecido' });
     }
   }
 
-  await dispatchOffers(approved as any);
+  if (settings.dispatch.automaticEnabled) {
+    await dispatchOffers(approved.slice(0, settings.dispatch.maxOffersPerCycle) as any);
+  }
 
   return {
     approved,
     errors,
-    approvedCount: approved.length
+    approvedCount: approved.length,
+    dispatchEnabled: settings.dispatch.automaticEnabled
   };
 }

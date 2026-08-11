@@ -32,11 +32,16 @@ const assertIncludes = (content, value, file) => {
   if (!content.includes(value)) throw new Error(`${file} precisa conter: ${value}`);
 };
 
-assertIncludes(apiDockerfile, 'npm run prisma:deploy -w apps/api', 'Dockerfile');
-assertIncludes(apiDockerfile, 'npm run start -w apps/api', 'Dockerfile');
+const assertExcludes = (content, value, file) => {
+  if (content.includes(value)) throw new Error(`${file} não pode conter: ${value}`);
+};
+
+assertExcludes(apiDockerfile, 'npm run prisma:deploy -w apps/api', 'Dockerfile');
+assertIncludes(apiDockerfile, 'CMD ["npm", "run", "start", "-w", "apps/api"]', 'Dockerfile');
+assertIncludes(apiDockerfile, "'/health'", 'Dockerfile');
 assertIncludes(apiDockerfile, 'USER node', 'Dockerfile');
-assertIncludes(workerDockerfile, 'npm run prisma:deploy -w apps/api', 'Dockerfile.worker');
-assertIncludes(workerDockerfile, 'npm run start:worker -w apps/api', 'Dockerfile.worker');
+assertExcludes(workerDockerfile, 'npm run prisma:deploy -w apps/api', 'Dockerfile.worker');
+assertIncludes(workerDockerfile, 'CMD ["npm", "run", "start:worker", "-w", "apps/api"]', 'Dockerfile.worker');
 assertIncludes(webDockerfile, 'VITE_API_URL=https://api-ofertas.r2rmarketingdigital.com.br', 'Dockerfile.web');
 assertIncludes(prometheusDockerfile, 'ops/prometheus/prometheus.example.yml', 'Dockerfile.prometheus');
 assertIncludes(grafanaDockerfile, 'ops/grafana/provisioning', 'Dockerfile.grafana');
@@ -46,11 +51,13 @@ assertIncludes(nginx, 'try_files $uri $uri/ /index.html;', 'deploy/easypanel/ngi
 assertIncludes(nginx, 'location = /health', 'deploy/easypanel/nginx.conf');
 
 for (const value of [
+  'API_HOST=0.0.0.0',
   'PUBLIC_API_URL=https://api-ofertas.r2rmarketingdigital.com.br',
   'FRONTEND_ORIGINS=https://ofertas.r2rmarketingdigital.com.br',
+  'schema=zenite_ofertas',
   'OPERATIONAL_ALERT_DASHBOARD_URL=https://grafana-ofertas.r2rmarketingdigital.com.br',
   'ALLOW_INSECURE_OUTBOUND_HTTP=false',
-  'BOOTSTRAP_ADMIN_ENABLED=true'
+  'BOOTSTRAP_ADMIN_ENABLED=false'
 ]) {
   assertIncludes(envTemplate, value, 'deploy/easypanel/easypanel.env.example');
 }

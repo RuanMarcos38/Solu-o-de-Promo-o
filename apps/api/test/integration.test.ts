@@ -23,6 +23,8 @@ let viewerToken = '';
 let viewerId = '';
 
 async function resetDatabase() {
+  await prisma.platformSettingAudit.deleteMany();
+  await prisma.platformSetting.deleteMany();
   await prisma.dispatchLog.deleteMany();
   await prisma.priceHistory.deleteMany();
   await prisma.offer.deleteMany();
@@ -157,6 +159,56 @@ describe('API integrada', () => {
     assert.ok((adminUsers.json() as { users: unknown[] }).users.length >= 3);
   });
 
+  test('versiona, valida e audita configurações operacionais somente para ADMIN', async () => {
+    const viewerRead = await app.inject({
+      method: 'GET',
+      url: '/admin/settings',
+      headers: { authorization: `Bearer ${viewerToken}` }
+    });
+    assert.equal(viewerRead.statusCode, 403);
+
+    const initial = await app.inject({
+      method: 'GET',
+      url: '/admin/settings',
+      headers: { authorization: `Bearer ${adminToken}` }
+    });
+    assert.equal(initial.statusCode, 200, initial.body);
+    const initialBody = initial.json() as any;
+    assert.equal(initialBody.version, 0);
+    assert.equal(initialBody.settings.qualification.requireVerifiedAffiliateLinks, true);
+
+    const nextSettings = structuredClone(initialBody.settings);
+    nextSettings.branding.platformName = 'Zenite Ofertas Profissional';
+    nextSettings.collection.intervalSeconds = 180;
+    nextSettings.publicApi.defaultPageSize = 25;
+
+    const updated = await app.inject({
+      method: 'PUT',
+      url: '/admin/settings',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { expectedVersion: 0, settings: nextSettings }
+    });
+    assert.equal(updated.statusCode, 200, updated.body);
+    assert.equal((updated.json() as any).version, 1);
+
+    const staleUpdate = await app.inject({
+      method: 'PUT',
+      url: '/admin/settings',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { expectedVersion: 0, settings: nextSettings }
+    });
+    assert.equal(staleUpdate.statusCode, 409, staleUpdate.body);
+
+    const audit = await app.inject({
+      method: 'GET',
+      url: '/admin/settings/audit',
+      headers: { authorization: `Bearer ${adminToken}` }
+    });
+    assert.equal(audit.statusCode, 200, audit.body);
+    assert.equal((audit.json() as any).audit.length, 1);
+    assert.equal((audit.json() as any).audit[0].version, 1);
+  });
+
   test('revoga imediatamente o JWT de usuário desativado', async () => {
     await prisma.user.update({ where: { id: viewerId }, data: { isActive: false } });
 
@@ -223,6 +275,10 @@ describe('API integrada', () => {
       discountPercent: 37.5,
       imageUrl: 'https://example.com/notebook.jpg',
       productUrl: 'https://example.com/notebook',
+      affiliateUrl: 'https://mercado.li/notebook-afiliado',
+      affiliateEligible: true,
+      affiliateProvider: 'integration-test',
+      affiliateVerifiedAt: new Date(),
       sellerName: 'Loja Oficial',
       rating: 4.8,
       freeShipping: true,
@@ -253,6 +309,7 @@ describe('API integrada', () => {
       discountPercent: storedOffer.discountPercent ? Number(storedOffer.discountPercent) : undefined,
       productUrl: storedOffer.productUrl,
       affiliateUrl: storedOffer.affiliateUrl ?? undefined,
+      affiliateEligible: storedOffer.affiliateEligible,
       marketplace: 'mercadolivre',
       score: storedOffer.score
     };

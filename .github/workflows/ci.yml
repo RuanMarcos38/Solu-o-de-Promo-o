@@ -26,7 +26,6 @@ jobs:
       JWT_SECRET: test-jwt-secret-with-at-least-32-characters
       CHANNEL_CONFIG_ENCRYPTION_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
       BOOTSTRAP_ADMIN_ENABLED: "false"
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,10 +33,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install dependencies
-        run: npm install --loglevel=error
+        run: npm ci --loglevel=error
 
       - name: Prisma generate
         run: npm run db:generate
@@ -92,6 +91,9 @@ jobs:
 
       - name: API build
         run: npm run build -w apps/api
+
+      - name: Bot smoke test — production startup resilience
+        run: bash scripts/ci-api-startup-resilience.sh
 
       - name: Web build
         run: npm run build -w apps/web
@@ -161,7 +163,6 @@ jobs:
       ALLOW_INSECURE_OUTBOUND_HTTP: "false"
       COLLECT_INTERVAL_SECONDS: "3600"
       NODE_V8_COVERAGE: ${{ github.workspace }}/coverage
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -169,10 +170,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install dependencies
-        run: npm install --loglevel=error
+        run: npm ci --loglevel=error
 
       - name: Prisma generate
         run: npm run db:generate
@@ -182,6 +183,9 @@ jobs:
 
       - name: Integration tests with coverage
         run: npm run test:coverage -w apps/api
+
+      - name: Bot smoke test — API and OpenAPI
+        run: bash scripts/ci-api-smoke.sh
 
       - name: Upload V8 coverage
         if: always()

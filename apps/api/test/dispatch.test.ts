@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import {
   buildDispatchIdempotencyKey,
   formatOfferMessage,
+  checkMarketplaceChannelPolicy,
   offerMatchesAlert,
   type AlertForMatch,
   type OfferForDispatch
@@ -15,6 +16,7 @@ const offer: OfferForDispatch = {
   discountPercent: 35,
   productUrl: 'https://example.com/product',
   affiliateUrl: 'https://example.com/affiliate',
+  affiliateEligible: true,
   marketplace: 'mercadolivre',
   score: 92
 };
@@ -71,5 +73,20 @@ describe('distribuição', () => {
     assert.notEqual(first, scoreChanged);
     assert.notEqual(first, otherChannel);
     assert.match(first, /^[a-f0-9]{64}$/);
+  });
+
+  test('bloqueia oferta não verificada e Mercado Livre em grupos fechados', () => {
+    assert.equal(checkMarketplaceChannelPolicy({ ...offer, affiliateEligible: false }, 'telegram', { audience: 'public' }).allowed, false);
+    assert.equal(checkMarketplaceChannelPolicy(offer, 'whatsapp', { audience: 'private' }).allowed, false);
+    assert.equal(checkMarketplaceChannelPolicy(offer, 'telegram', { audience: 'private' }).allowed, false);
+    assert.equal(checkMarketplaceChannelPolicy(offer, 'telegram', { audience: 'public' }).allowed, true);
+    assert.equal(checkMarketplaceChannelPolicy({ ...offer, marketplace: 'amazon' }, 'whatsapp', { audience: 'private' }).allowed, true);
+  });
+
+  test('nunca usa o link comum como fallback', () => {
+    assert.throws(
+      () => formatOfferMessage({ ...offer, affiliateEligible: false, affiliateUrl: undefined }),
+      /sem link afiliado verificado/
+    );
   });
 });

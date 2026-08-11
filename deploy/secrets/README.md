@@ -15,7 +15,7 @@ alertmanager_secondary_webhook_url
 alertmanager_warning_webhook_url
 ```
 
-A aplicação também usa `.env.production.secrets`, na raiz, para valores consumidos diretamente pela API, PostgreSQL e Redis.
+A aplicação também usa `.env.production.secrets`, na raiz, para valores consumidos diretamente pela API, PostgreSQL, Redis e conectores de afiliados.
 
 ## Geração e preenchimento
 

@@ -60,6 +60,10 @@ Não use `*`. Informe somente origens completas, sem caminho adicional.
 
 Novas configurações de fontes e canais são armazenadas com AES-256-GCM usando `CHANNEL_CONFIG_ENCRYPTION_KEY`.
 
+Quando essa variável estiver ausente ou em formato inválido, a API deriva uma chave
+estável e separada a partir do `JWT_SECRET` usando HKDF. Definir uma chave base64 de
+32 bytes continua recomendado para permitir a rotação independente dos tokens JWT.
+
 A API retorna somente um resumo mascarado das configurações. Tokens, API keys, senhas, headers e autorizações não são devolvidos pelo endpoint administrativo.
 
 Configurações antigas em texto puro continuam legíveis para compatibilidade, mas devem ser abertas e salvas novamente no painel para serem criptografadas.

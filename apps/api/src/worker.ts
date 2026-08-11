@@ -13,6 +13,7 @@ import {
   DISPATCH_QUEUE_NAME,
   OPERATIONAL_ALERT_QUEUE_NAME,
   connection,
+  configureCollectionSchedule,
   collectOffersQueue,
   dispatchDeadLetterQueue,
   dispatchOffersQueue,
@@ -24,6 +25,7 @@ import {
   type DispatchJobData,
   type OperationalAlertQueueData
 } from './queue.js';
+import { getPlatformSettings } from './runtimeSettings.js';
 import {
   closeMetricsServer,
   initializeOpenTelemetry,
@@ -138,14 +140,13 @@ const workerMetricsServer = await startWorkerMetricsServer(async () => {
   });
 });
 
-await collectOffersQueue.add('collect', {}, {
-  jobId: 'recurring-default-collection',
-  repeat: { every: config.collectIntervalSeconds * 1000 },
-  removeOnComplete: 100,
-  removeOnFail: 100
+const runtimeSettings = await getPlatformSettings();
+await configureCollectionSchedule({
+  enabled: runtimeSettings.settings.collection.automaticEnabled,
+  intervalSeconds: runtimeSettings.settings.collection.intervalSeconds
 });
 
-await enqueueCollectionJob({});
+if (runtimeSettings.settings.collection.automaticEnabled) await enqueueCollectionJob({});
 
 if (operationalConfig.enabled) {
   validateOperationalAlertConfig();

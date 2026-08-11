@@ -66,6 +66,9 @@ model Offer {
   imageUrl        String?
   productUrl      String
   affiliateUrl    String?
+  affiliateEligible Boolean      @default(false)
+  affiliateProvider String?
+  affiliateVerifiedAt DateTime?
   sellerName      String?
   rating          Decimal?     @db.Decimal(3, 2)
   freeShipping    Boolean      @default(false)
@@ -81,6 +84,7 @@ model Offer {
   @@index([normalizedTitle])
   @@index([category])
   @@index([score])
+  @@index([affiliateEligible, isActive, score])
 }
 
 model PriceHistory {
@@ -124,4 +128,30 @@ model DispatchLog {
   error      String?
   createdAt  DateTime       @default(now())
   offer      Offer          @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([offerId])
+}
+
+model PlatformSetting {
+  id        String                 @id
+  value     Json
+  version   Int                    @default(1)
+  updatedBy String?
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  audits    PlatformSettingAudit[]
+}
+
+model PlatformSettingAudit {
+  id            String          @id @default(cuid())
+  settingId     String
+  version       Int
+  previousValue Json?
+  value         Json
+  updatedBy     String
+  createdAt     DateTime        @default(now())
+  setting       PlatformSetting @relation(fields: [settingId], references: [id], onDelete: Cascade)
+
+  @@unique([settingId, version])
+  @@index([settingId, createdAt])
 }

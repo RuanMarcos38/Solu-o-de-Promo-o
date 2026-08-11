@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { DispatchStatus, type DispatchChannel, type DispatchLog, type Offer, Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
 import { prisma } from './db.js';
@@ -10,37 +9,25 @@ import {
   type DispatchJobData
 } from './queue.js';
 import { decryptChannelConfig } from './secrets.js';
+import {
+  buildDispatchIdempotencyKey,
+  checkMarketplaceChannelPolicy,
+  formatOfferMessage,
+  offerMatchesAlert,
+  type AlertForMatch,
+  type OfferForDispatch
+} from './dispatchRules.js';
 
 export type ChannelConfig = Record<string, any>;
-export type OfferForDispatch = {
-  id: string;
-  title: string;
-  currentPrice: number;
-  discountPercent?: number;
-  productUrl: string;
-  affiliateUrl?: string;
-  marketplace: string;
-  score: number;
-};
-
-export type AlertForMatch = {
-  name: string;
-  keywords: string[];
-  marketplaces: string[];
-  minDiscountPercent: number;
-  maxPrice: unknown;
-};
+export type { AlertForMatch, OfferForDispatch } from './dispatchRules.js';
 
 export type DispatchEnqueueResult = {
   queued: number;
   duplicates: number;
+  blocked: number;
   skipped: boolean;
   jobIds: string[];
 };
-
-function normalize(value: string) {
-  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-}
 
 function jsonObject(value: Prisma.JsonValue | null): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -55,49 +42,10 @@ function toDispatchOffer(offer: Offer): OfferForDispatch {
     discountPercent: offer.discountPercent === null ? undefined : Number(offer.discountPercent),
     productUrl: offer.productUrl,
     affiliateUrl: offer.affiliateUrl ?? undefined,
+    affiliateEligible: offer.affiliateEligible,
     marketplace: String(offer.marketplace).toLowerCase(),
     score: offer.score
   };
-}
-
-export function formatOfferMessage(offer: OfferForDispatch) {
-  const price = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(offer.currentPrice);
-  const discount = offer.discountPercent ? `\n🔥 Desconto: ${offer.discountPercent}% OFF` : '';
-  const link = offer.affiliateUrl || offer.productUrl;
-  return `🚨 Oferta encontrada!\n\n${offer.title}\n💰 ${price}${discount}\n⭐ Score: ${offer.score}\n🛒 ${link}`;
-}
-
-export function offerMatchesAlert(offer: OfferForDispatch, alert: AlertForMatch) {
-  const title = normalize(offer.title);
-  const marketplace = normalize(offer.marketplace);
-  const alertMarketplaces = alert.marketplaces.map(normalize).filter(Boolean);
-  const alertKeywords = alert.keywords.map(normalize).filter(Boolean);
-  const discount = offer.discountPercent ?? 0;
-  const maxPrice = alert.maxPrice === null || alert.maxPrice === undefined ? null : Number(alert.maxPrice);
-
-  if (alertMarketplaces.length > 0 && !alertMarketplaces.includes(marketplace)) return false;
-  if (alertKeywords.length > 0 && !alertKeywords.some((keyword) => title.includes(keyword))) return false;
-  if (discount < alert.minDiscountPercent) return false;
-  if (maxPrice !== null && Number.isFinite(maxPrice) && offer.currentPrice > maxPrice) return false;
-  return true;
-}
-
-export function buildDispatchIdempotencyKey(
-  offer: OfferForDispatch,
-  channelId: string,
-  eventScope = 'production'
-) {
-  const fingerprint = JSON.stringify({
-    eventScope,
-    offerId: offer.id,
-    channelId,
-    currentPrice: offer.currentPrice,
-    discountPercent: offer.discountPercent ?? null,
-    score: offer.score,
-    targetUrl: offer.affiliateUrl || offer.productUrl
-  });
-
-  return createHash('sha256').update(fingerprint).digest('hex');
 }
 
 async function getMatchedAlerts(offer: OfferForDispatch) {
@@ -232,17 +180,22 @@ async function writeDispatchLog(input: {
   });
 }
 
-async function createSkippedAlertLog(offer: OfferForDispatch, idempotencyKey: string) {
+async function createSkippedLog(
+  offer: OfferForDispatch,
+  idempotencyKey: string,
+  reason: string,
+  channelName = 'policy-filter'
+) {
   const existing = await findDispatchLog(idempotencyKey);
   if (existing) return existing;
 
   return writeDispatchLog({
     offerId: offer.id,
-    channelName: 'alert-filter',
+    channelName,
     status: DispatchStatus.SKIPPED,
     payload: {
       idempotencyKey,
-      reason: 'no_alert_match',
+      reason,
       marketplace: offer.marketplace,
       score: offer.score,
       skippedAt: new Date().toISOString()
@@ -254,21 +207,34 @@ export async function dispatchOffer(
   offer: OfferForDispatch,
   options: { force?: boolean } = {}
 ): Promise<DispatchEnqueueResult> {
-  const { activeAlertCount, matchedAlerts } = await getMatchedAlerts(offer);
   const forceScope = options.force ? `manual-${Date.now()}-${Math.random().toString(36).slice(2)}` : 'production';
+  if (!offer.affiliateEligible || !offer.affiliateUrl) {
+    const skipKey = buildDispatchIdempotencyKey(offer, 'affiliate-filter', forceScope);
+    await createSkippedLog(offer, skipKey, 'affiliate_link_not_verified', 'affiliate-filter');
+    return { queued: 0, duplicates: 0, blocked: 1, skipped: true, jobIds: [] };
+  }
+
+  const { activeAlertCount, matchedAlerts } = await getMatchedAlerts(offer);
 
   if (activeAlertCount > 0 && matchedAlerts.length === 0) {
     const skipKey = buildDispatchIdempotencyKey(offer, 'alert-filter', forceScope);
-    await createSkippedAlertLog(offer, skipKey);
-    return { queued: 0, duplicates: 0, skipped: true, jobIds: [] };
+    await createSkippedLog(offer, skipKey, 'no_alert_match', 'alert-filter');
+    return { queued: 0, duplicates: 0, blocked: 0, skipped: true, jobIds: [] };
   }
 
   const channels = await prisma.dispatchChannel.findMany({ where: { isActive: true } });
   const matchedAlertNames = matchedAlerts.map((alert) => alert.name);
-  const result: DispatchEnqueueResult = { queued: 0, duplicates: 0, skipped: false, jobIds: [] };
+  const result: DispatchEnqueueResult = { queued: 0, duplicates: 0, blocked: 0, skipped: false, jobIds: [] };
 
   for (const channel of channels) {
     const idempotencyKey = buildDispatchIdempotencyKey(offer, channel.id, forceScope);
+    const channelConfig = decryptChannelConfig(channel.config);
+    const policy = checkMarketplaceChannelPolicy(offer, channel.type, channelConfig);
+    if (!policy.allowed) {
+      await createSkippedLog(offer, idempotencyKey, policy.reason, channel.name);
+      result.blocked += 1;
+      continue;
+    }
     const queued = await enqueueDispatchJob({
       offerId: offer.id,
       channelId: channel.id,
@@ -318,6 +284,26 @@ export async function processDispatchJob(job: Job<DispatchJobData>) {
   }
 
   const offer = toDispatchOffer(offerRecord);
+  const channelConfig = decryptChannelConfig(channel.config);
+  const policy = checkMarketplaceChannelPolicy(offer, channel.type, channelConfig);
+  if (!policy.allowed) {
+    const skipped = await writeDispatchLog({
+      existing,
+      offerId,
+      channelName: channel.name,
+      status: DispatchStatus.SKIPPED,
+      payload: {
+        ...jsonObject(existing?.payload ?? null),
+        idempotencyKey,
+        channelId,
+        jobId: job.id,
+        attemptNumber,
+        reason: policy.reason,
+        skippedAt: new Date().toISOString()
+      }
+    });
+    return { status: 'skipped', logId: skipped.id };
+  }
   const basePayload = {
     ...jsonObject(existing?.payload ?? null),
     idempotencyKey,

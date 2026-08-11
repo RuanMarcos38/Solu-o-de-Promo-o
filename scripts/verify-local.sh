@@ -9,8 +9,8 @@ fi
 echo "Subindo Postgres e Redis..."
 docker compose up -d postgres redis
 
-echo "Instalando dependências..."
-npm install
+echo "Instalando dependências bloqueadas..."
+npm ci
 
 echo "Gerando Prisma Client..."
 npm run db:generate
