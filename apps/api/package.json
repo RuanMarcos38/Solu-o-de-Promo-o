@@ -17,9 +17,9 @@
     "prisma:deploy": "prisma migrate deploy",
     "lint": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --import tsx --import ./test/setup.ts --test --test-concurrency=1 test/scoring.test.ts test/secrets.test.ts test/http.test.ts test/dispatch.test.ts test/operationalAlerts.test.ts test/observability.test.ts",
+    "test:unit": "node --import tsx --import ./test/setup.ts --test --test-concurrency=1 test/config.test.ts test/scoring.test.ts test/secrets.test.ts test/http.test.ts test/dispatch.test.ts test/adapters.test.ts test/affiliate.test.ts test/openApi.test.ts test/runtimeSettings.test.ts test/operationalAlerts.test.ts test/observability.test.ts",
     "test:integration": "node --import tsx --import ./test/setup.ts --test --test-concurrency=1 test/integration.test.ts test/dispatchOperations.integration.test.ts test/operationalAlerts.integration.test.ts test/observability.integration.test.ts",
-    "test:coverage": "node --import tsx --import ./test/setup.ts --experimental-test-coverage --test --test-concurrency=1 test/scoring.test.ts test/secrets.test.ts test/http.test.ts test/dispatch.test.ts test/operationalAlerts.test.ts test/observability.test.ts test/integration.test.ts test/dispatchOperations.integration.test.ts test/operationalAlerts.integration.test.ts test/observability.integration.test.ts"
+    "test:coverage": "node --import tsx --import ./test/setup.ts --experimental-test-coverage --test --test-concurrency=1 test/config.test.ts test/scoring.test.ts test/secrets.test.ts test/http.test.ts test/dispatch.test.ts test/adapters.test.ts test/affiliate.test.ts test/openApi.test.ts test/runtimeSettings.test.ts test/operationalAlerts.test.ts test/observability.test.ts test/integration.test.ts test/dispatchOperations.integration.test.ts test/operationalAlerts.integration.test.ts test/observability.integration.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "11.0.1",

@@ -1,13 +1,25 @@
 import 'dotenv/config';
 import { config } from './config.js';
 import { prisma } from './db.js';
-import { collectOffersQueue, connection, dispatchDeadLetterQueue, dispatchOffersQueue, operationalAlertsQueue } from './queue.js';
+import {
+  collectOffersQueue,
+  connection,
+  dispatchDeadLetterQueue,
+  dispatchOffersQueue,
+  operationalAlertsQueue,
+  redisConfigurationIssue
+} from './queue.js';
 import { initializeOpenTelemetry, shutdownOpenTelemetry } from './telemetry.js';
 
 await initializeOpenTelemetry('api');
 const { createApp } = await import('./application.js');
-const app = await createApp();
-await app.listen({ port: config.apiPort, host: '0.0.0.0' });
+const app = await createApp({ waitForDependencies: false });
+await app.listen({ port: config.apiPort, host: config.apiHost });
+
+for (const warning of config.configurationWarnings) {
+  app.log.warn({ code: warning.code }, warning.message);
+}
+if (redisConfigurationIssue) app.log.warn({ code: 'REDIS_URL_INVALID' }, redisConfigurationIssue);
 
 let shuttingDown = false;
 

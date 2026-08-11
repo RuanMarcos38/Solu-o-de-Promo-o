@@ -10,22 +10,38 @@ import { config } from './config.js';
 import { getOfferHistory, getStats, listOffers } from './offerStore.js';
 import { dispatchOffer } from './dispatch.js';
 import { prisma } from './db.js';
-import { collectOffersQueue, connection, enqueueCollectionJob } from './queue.js';
+import {
+  collectOffersQueue,
+  configureCollectionSchedule,
+  connection,
+  enqueueCollectionJob,
+  redisConfigurationIssue
+} from './queue.js';
 import { emitNewOffers, emitStats, setRealtimeServer } from './realtime.js';
 import { registerMarketplaceEventBridge } from './marketplaceEvents.js';
 import { toMarketplaceEnum, toMarketplaceName } from './marketplace.js';
 import { ensureDefaultSources } from './sources.js';
 import { decryptSensitiveConfig, encryptSensitiveConfig, summarizeSensitiveConfig } from './secrets.js';
 import { assertSafeOutboundUrl } from './http.js';
+import { getMarketplaceStatuses } from './adapters/index.js';
+import { buildOpenApiDocument } from './openApi.js';
+import {
+  getPlatformSettings,
+  listPlatformSettingsAudit,
+  platformSettingsSchema,
+  savePlatformSettings
+} from './runtimeSettings.js';
 
 const optionalNumber = z.preprocess(
   (value) => value === undefined || value === null || value === '' ? undefined : Number(value),
   z.number().finite().optional()
 );
 
+const marketplaceNameSchema = z.enum(['mercadolivre', 'amazon', 'shopee', 'magalu', 'aliexpress', 'other']);
+
 const offersQuerySchema = z.object({
   keyword: z.string().trim().max(160).optional(),
-  marketplace: z.string().trim().max(50).optional(),
+  marketplace: marketplaceNameSchema.optional(),
   category: z.string().trim().max(120).optional(),
   minDiscount: optionalNumber,
   maxPrice: optionalNumber,
@@ -40,11 +56,15 @@ const loginSchema = z.object({
 
 const collectionSchema = z.object({
   keyword: z.string().trim().min(1).max(160).optional(),
-  marketplace: z.string().trim().max(50).optional()
+  marketplace: marketplaceNameSchema.optional()
 }).default({});
 
 const idParamsSchema = z.object({ id: z.string().trim().min(1).max(100) });
 const offerIdParamsSchema = z.object({ offerId: z.string().trim().min(1).max(100) });
+const settingsUpdateSchema = z.object({
+  expectedVersion: z.number().int().min(0),
+  settings: platformSettingsSchema
+}).strict();
 
 const userCreateSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -144,10 +164,35 @@ async function validateChannelConfig(type: string, channelConfig: Record<string,
   if (type === 'evolution') await validateConfiguredUrl(channelConfig.baseUrl);
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs = 3_000) {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('Tempo limite da dependência excedido')), timeoutMs);
+        timer.unref();
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function requireRedis() {
+  if (redisConfigurationIssue) {
+    throw Object.assign(new Error('Fila Redis não configurada'), { statusCode: 503 });
+  }
+  try {
+    await withTimeout(connection.ping());
+  } catch {
+    throw Object.assign(new Error('Fila Redis indisponível'), { statusCode: 503 });
+  }
+}
+
 async function getSystemStatus() {
-  const [queueCounts, totalOffers, activeSources, activeAlerts, activeChannels, failedDispatches, sentDispatches] = await Promise.all([
-    collectOffersQueue.getJobCounts('waiting', 'active', 'delayed', 'completed', 'failed'),
-    prisma.offer.count({ where: { isActive: true } }),
+  const [totalOffers, activeSources, activeAlerts, activeChannels, failedDispatches, sentDispatches] = await Promise.all([
+    prisma.offer.count({ where: { isActive: true, affiliateEligible: true } }),
     prisma.marketplaceSource.count({ where: { isActive: true } }),
     prisma.alertRule.count({ where: { isActive: true } }),
     prisma.dispatchChannel.count({ where: { isActive: true } }),
@@ -155,10 +200,24 @@ async function getSystemStatus() {
     prisma.dispatchLog.count({ where: { status: 'SENT' } })
   ]);
 
+  let redis = 'degraded';
+  let queueCounts: Record<string, number> = {};
+  if (!redisConfigurationIssue) {
+    try {
+      await withTimeout(connection.ping());
+      queueCounts = await withTimeout(
+        collectOffersQueue.getJobCounts('waiting', 'active', 'delayed', 'completed', 'failed')
+      );
+      redis = 'ok';
+    } catch {
+      redis = 'degraded';
+    }
+  }
+
   return {
-    status: 'ok',
+    status: redis === 'ok' ? 'ok' : 'degraded',
     database: 'ok',
-    redis: 'ok',
+    redis,
     queue: queueCounts,
     totals: {
       offers: totalOffers,
@@ -171,7 +230,11 @@ async function getSystemStatus() {
   };
 }
 
-export async function createApp() {
+export type CreateAppOptions = {
+  waitForDependencies?: boolean;
+};
+
+export async function createApp(options: CreateAppOptions = {}) {
   const app = Fastify({
     logger: true,
     bodyLimit: 1_000_000,
@@ -207,13 +270,40 @@ export async function createApp() {
   });
 
   let subscriber: Awaited<ReturnType<typeof registerMarketplaceEventBridge>> | null = null;
-  try {
-    subscriber = await registerMarketplaceEventBridge(io);
-  } catch (error) {
-    app.log.warn({ err: error }, 'Redis event bridge unavailable; API started in degraded mode');
+  const runtimeState = {
+    databaseBootstrap: 'pending' as 'pending' | 'ready' | 'degraded',
+    redisBridge: 'pending' as 'pending' | 'ready' | 'degraded'
+  };
+
+  async function initializeDependencies() {
+    if (config.databaseConfigurationIssue) {
+      runtimeState.databaseBootstrap = 'degraded';
+      app.log.error({ code: 'DATABASE_URL_INVALID' }, config.databaseConfigurationIssue);
+    } else {
+      try {
+        await ensureAdminUser();
+        await ensureDefaultSources();
+        runtimeState.databaseBootstrap = 'ready';
+      } catch (error) {
+        runtimeState.databaseBootstrap = 'degraded';
+        app.log.error({ err: error }, 'Database bootstrap unavailable; API remains online for diagnostics');
+      }
+    }
+
+    if (redisConfigurationIssue) {
+      runtimeState.redisBridge = 'degraded';
+      app.log.warn({ code: 'REDIS_URL_INVALID' }, redisConfigurationIssue);
+      return;
+    }
+
+    try {
+      subscriber = await registerMarketplaceEventBridge(io);
+      runtimeState.redisBridge = 'ready';
+    } catch (error) {
+      runtimeState.redisBridge = 'degraded';
+      app.log.warn({ err: error }, 'Redis event bridge unavailable; API started in degraded mode');
+    }
   }
-  await ensureAdminUser();
-  await ensureDefaultSources();
 
   app.addHook('onClose', async () => {
     io.close();
@@ -226,19 +316,48 @@ export async function createApp() {
     }
   });
 
-  app.get('/health', async () => ({ status: 'ok', service: 'promotion-radar-api' }));
+  const healthPayload = () => ({
+    status: 'ok',
+    service: 'promotion-radar-api',
+    startup: runtimeState,
+    configuration: config.configurationWarnings.length > 0 || redisConfigurationIssue ? 'degraded' : 'ok',
+    warnings: [
+      ...config.configurationWarnings.map((warning) => warning.code),
+      ...(redisConfigurationIssue ? ['REDIS_URL_INVALID'] : [])
+    ]
+  });
+
+  app.get('/health', async () => healthPayload());
+  app.get('/api/v1/health', async () => ({ ...healthPayload(), apiVersion: 'v1' }));
+  app.get('/openapi.json', async () => buildOpenApiDocument());
 
   app.get('/ready', async (_request, reply) => {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      await connection.ping();
-      return { status: 'ready', database: 'ok', redis: 'ok' };
-    } catch (error) {
+    const databaseResult = config.databaseConfigurationIssue
+      ? { ok: false, code: 'DATABASE_URL_INVALID' }
+      : await withTimeout(prisma.$queryRaw`SELECT 1`, 5_000)
+        .then(() => ({ ok: true, code: 'OK' }))
+        .catch(() => ({ ok: false, code: 'DATABASE_UNAVAILABLE' }));
+    const redisResult = redisConfigurationIssue
+      ? { ok: false, code: 'REDIS_URL_INVALID' }
+      : await withTimeout(connection.ping(), 3_000)
+        .then(() => ({ ok: true, code: 'OK' }))
+        .catch(() => ({ ok: false, code: 'REDIS_UNAVAILABLE' }));
+
+    if (!databaseResult.ok) {
       return reply.status(503).send({
         status: 'not_ready',
-        error: config.isProduction ? 'Dependência indisponível' : error instanceof Error ? error.message : 'Erro desconhecido'
+        database: 'unavailable',
+        redis: redisResult.ok ? 'ok' : 'degraded',
+        code: databaseResult.code
       });
     }
+
+    return {
+      status: redisResult.ok ? 'ready' : 'ready_degraded',
+      database: 'ok',
+      redis: redisResult.ok ? 'ok' : 'degraded',
+      ...(redisResult.ok ? {} : { code: redisResult.code })
+    };
   });
 
   app.post('/auth/login', {
@@ -254,6 +373,26 @@ export async function createApp() {
 
   app.get('/offers', async (request) => ({ offers: await listOffers(offersQuerySchema.parse(request.query)) }));
   app.get('/offers/stats', async () => getStats());
+  app.get('/api/v1/offers', async (request, reply) => {
+    const { settings } = await getPlatformSettings();
+    if (!settings.publicApi.enabled) return reply.status(503).send({ message: 'API pública temporariamente desativada' });
+    return {
+      offers: await listOffers(offersQuerySchema.parse(request.query), {
+        defaultLimit: settings.publicApi.defaultPageSize,
+        maxLimit: settings.publicApi.maxPageSize
+      })
+    };
+  });
+  app.get('/api/v1/offers/stats', async (_request, reply) => {
+    const { settings } = await getPlatformSettings();
+    if (!settings.publicApi.enabled) return reply.status(503).send({ message: 'API pública temporariamente desativada' });
+    return getStats();
+  });
+  app.get('/api/v1/marketplaces', async (_request, reply) => {
+    const { settings } = await getPlatformSettings();
+    if (!settings.publicApi.enabled) return reply.status(503).send({ message: 'API pública temporariamente desativada' });
+    return { marketplaces: getMarketplaceStatuses() };
+  });
   app.get('/offers/:id/history', async (request) => {
     const params = idParamsSchema.parse(request.params);
     return { history: await getOfferHistory(params.id) };
@@ -270,6 +409,7 @@ export async function createApp() {
 
   app.post('/collect/enqueue', async (request) => {
     await requireEditor(request);
+    await requireRedis();
     const body = collectionSchema.parse(request.body ?? {});
     const job = await enqueueCollectionJob({ keyword: body.keyword, marketplace: toMarketplaceName(body.marketplace) });
     return { status: 'queued', jobId: job.id };
@@ -278,6 +418,39 @@ export async function createApp() {
   app.get('/admin/system', async (request) => {
     await requireAdmin(request);
     return getSystemStatus();
+  });
+
+  app.get('/admin/settings', async (request) => {
+    await requireAdmin(request);
+    return getPlatformSettings();
+  });
+
+  app.put('/admin/settings', async (request) => {
+    const currentUser = await requireAdmin(request);
+    const body = settingsUpdateSchema.parse(request.body);
+    const saved = await savePlatformSettings({
+      settings: body.settings,
+      expectedVersion: body.expectedVersion,
+      updatedBy: currentUser.id
+    });
+    let scheduler: 'updated' | 'pending' = 'updated';
+    try {
+      await requireRedis();
+      await withTimeout(configureCollectionSchedule({
+        enabled: saved.settings.collection.automaticEnabled,
+        intervalSeconds: saved.settings.collection.intervalSeconds
+      }));
+    } catch (error) {
+      scheduler = 'pending';
+      app.log.warn({ err: error }, 'Settings saved; Redis scheduler update is pending');
+    }
+    return { ...saved, scheduler };
+  });
+
+  app.get('/admin/settings/audit', async (request) => {
+    await requireAdmin(request);
+    const query = z.object({ limit: optionalNumber }).parse(request.query);
+    return { audit: await listPlatformSettingsAudit(query.limit ?? 20) };
   });
 
   app.get('/admin/users', async (request) => {
@@ -488,17 +661,18 @@ export async function createApp() {
     const params = offerIdParamsSchema.parse(request.params);
     const offer = await prisma.offer.findUnique({ where: { id: params.offerId } });
     if (!offer) throw Object.assign(new Error('Oferta não encontrada'), { statusCode: 404 });
-    await dispatchOffer({
+    const result = await dispatchOffer({
       id: offer.id,
       title: offer.title,
       currentPrice: Number(offer.currentPrice),
       discountPercent: offer.discountPercent ? Number(offer.discountPercent) : undefined,
       productUrl: offer.productUrl,
       affiliateUrl: offer.affiliateUrl ?? undefined,
+      affiliateEligible: offer.affiliateEligible,
       marketplace: String(offer.marketplace).toLowerCase(),
       score: offer.score
     });
-    return { status: 'sent' };
+    return { status: result.queued > 0 ? 'queued' : result.skipped ? 'skipped' : 'not-queued', ...result };
   });
 
   io.on('connection', async (socket) => {
@@ -509,6 +683,15 @@ export async function createApp() {
       socket.emit('system:error', { message: 'Não foi possível carregar as ofertas iniciais' });
     }
   });
+
+  const waitForDependencies = options.waitForDependencies ?? !config.isProduction;
+  if (waitForDependencies) {
+    await initializeDependencies();
+  } else {
+    setImmediate(() => {
+      void initializeDependencies();
+    });
+  }
 
   return app;
 }

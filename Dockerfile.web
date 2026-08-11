@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL=https://api-ofertas.r2rmarketingdigital.com.br
 ENV VITE_API_URL=$VITE_API_URL
 COPY package*.json ./
 COPY apps/api/package*.json apps/api/
 COPY apps/web/package*.json apps/web/
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build -w apps/web
 

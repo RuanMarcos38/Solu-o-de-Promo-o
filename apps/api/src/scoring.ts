@@ -1,6 +1,12 @@
 import type { NormalizedOffer } from './types.js';
 import { config } from './config.js';
 
+export type QualificationCriteria = {
+  minDiscountPercent: number;
+  minOpportunityScore: number;
+  requireVerifiedAffiliateLinks: true;
+};
+
 export function normalizeTitle(title: string) {
   return title
     .toLowerCase()
@@ -23,10 +29,20 @@ export function calculateScore(offer: Omit<NormalizedOffer, 'score'>) {
   const shipping = offer.freeShipping ? 10 : 0;
   const priceSignal = offer.currentPrice > 0 ? 10 : 0;
   const ratingSignal = offer.rating ? Math.min(10, offer.rating * 2) : 0;
-  return Math.min(100, Math.round(discount * 1.5 + hasImage + hasSeller + shipping + priceSignal + ratingSignal));
+  const affiliateSignal = offer.affiliateEligible && offer.affiliateUrl ? 10 : 0;
+  return Math.min(100, Math.round(discount * 1.5 + hasImage + hasSeller + shipping + priceSignal + ratingSignal + affiliateSignal));
 }
 
-export function isApprovedOffer(offer: NormalizedOffer) {
+export function isApprovedOffer(offer: NormalizedOffer, criteria: QualificationCriteria = {
+  minDiscountPercent: config.minDiscountPercent,
+  minOpportunityScore: config.minOpportunityScore,
+  requireVerifiedAffiliateLinks: true
+}) {
   const discount = offer.discountPercent ?? 0;
-  return offer.currentPrice > 0 && Boolean(offer.productUrl) && discount >= config.minDiscountPercent && offer.score >= config.minOpportunityScore;
+  const affiliateApproved = Boolean(offer.affiliateEligible && offer.affiliateUrl);
+  return offer.currentPrice > 0
+    && Boolean(offer.productUrl)
+    && affiliateApproved
+    && discount >= criteria.minDiscountPercent
+    && offer.score >= criteria.minOpportunityScore;
 }

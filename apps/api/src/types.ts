@@ -19,6 +19,9 @@ export type NormalizedOffer = {
   imageUrl?: string;
   productUrl: string;
   affiliateUrl?: string;
+  affiliateEligible: boolean;
+  affiliateProvider?: string;
+  affiliateVerifiedAt?: Date;
   sellerName?: string;
   rating?: number;
   freeShipping?: boolean;

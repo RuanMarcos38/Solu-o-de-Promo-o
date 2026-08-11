@@ -9,7 +9,7 @@ Write-Host "Subindo Postgres e Redis..."
 docker compose up -d postgres redis
 
 Write-Host "Instalando dependências..."
-npm install
+npm ci
 
 Write-Host "Gerando Prisma Client..."
 npm run db:generate

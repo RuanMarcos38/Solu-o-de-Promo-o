@@ -101,7 +101,9 @@ Build Path: /
 Dockerfile: Dockerfile
 ```
 
-O Dockerfile executa `prisma migrate deploy` antes de iniciar a API.
+As migrations do schema isolado são aplicadas pelo processo controlado de banco. O
+container da API não executa migrations durante o boot e, por isso, não fica preso
+antes de abrir a porta HTTP.
 
 ### Domain & Proxy
 
@@ -114,9 +116,12 @@ HTTPS/Let's Encrypt: habilitado
 ### Healthcheck
 
 ```text
-Path: /ready
+Path: /health
 Expected status: 200
 ```
+
+`/health` é o teste de vida do processo. Use `/ready` separadamente para confirmar
+PostgreSQL; Redis pode aparecer como `degraded` sem bloquear login e consultas.
 
 ### Environment
 
@@ -127,13 +132,14 @@ Obrigatórios:
 ```text
 NODE_ENV=production
 DEPLOYMENT_ENVIRONMENT=homologation
+API_HOST=0.0.0.0
 API_PORT=3333
 PUBLIC_API_URL=https://api-ofertas.r2rmarketingdigital.com.br
 FRONTEND_ORIGINS=https://ofertas.r2rmarketingdigital.com.br
-DATABASE_URL=<URL INTERNA DO POSTGRES>
+DATABASE_URL=<URL SESSION POOLER DO SUPABASE COM schema=zenite_ofertas>
 REDIS_URL=<URL INTERNA DO REDIS>
 JWT_SECRET=<64+ caracteres aleatórios>
-CHANNEL_CONFIG_ENCRYPTION_KEY=<64 hexadecimais>
+CHANNEL_CONFIG_ENCRYPTION_KEY=<base64 de 32 bytes, opcional>
 ADMIN_EMAIL=<e-mail real>
 ADMIN_PASSWORD=<senha forte>
 METRICS_BEARER_TOKEN=<token aleatório>
@@ -158,7 +164,9 @@ Replicas: 1
 
 Cole exatamente o mesmo Environment da API.
 
-O worker também executa `prisma migrate deploy` antes de iniciar. O comando é idempotente e evita que o worker suba com schema desatualizado.
+O worker usa o mesmo schema já migrado pelo processo controlado de banco. Ele não
+executa migrations durante o boot e deve ser implantado depois de a API responder em
+`/ready`.
 
 Não publique a porta `9464` externamente. Ela será usada apenas pelo Prometheus dentro do projeto.
 

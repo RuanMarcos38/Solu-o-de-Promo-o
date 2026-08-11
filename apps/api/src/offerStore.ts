@@ -1,6 +1,6 @@
 import { Marketplace } from '@prisma/client';
 import type { NormalizedOffer } from './types.js';
-import { isApprovedOffer } from './scoring.js';
+import { isApprovedOffer, type QualificationCriteria } from './scoring.js';
 import { prisma } from './db.js';
 
 const marketplaceMap: Record<string, Marketplace> = {
@@ -39,11 +39,11 @@ function toMarketplace(value?: string) {
   return marketplaceMap[value.toLowerCase()] ?? undefined;
 }
 
-export async function upsertOffers(items: NormalizedOffer[]) {
+export async function upsertOffers(items: NormalizedOffer[], criteria?: QualificationCriteria) {
   const fresh = [];
 
   for (const item of items) {
-    if (!isApprovedOffer(item)) continue;
+    if (!isApprovedOffer(item, criteria)) continue;
 
     const marketplace = marketplaceMap[item.marketplace] ?? Marketplace.OTHER;
     const existing = await prisma.offer.findUnique({
@@ -74,6 +74,9 @@ export async function upsertOffers(items: NormalizedOffer[]) {
         imageUrl: item.imageUrl,
         productUrl: item.productUrl,
         affiliateUrl: item.affiliateUrl,
+        affiliateEligible: item.affiliateEligible,
+        affiliateProvider: item.affiliateProvider,
+        affiliateVerifiedAt: item.affiliateVerifiedAt,
         sellerName: item.sellerName,
         rating: item.rating,
         freeShipping: item.freeShipping ?? false,
@@ -90,6 +93,9 @@ export async function upsertOffers(items: NormalizedOffer[]) {
         imageUrl: item.imageUrl,
         productUrl: item.productUrl,
         affiliateUrl: item.affiliateUrl,
+        affiliateEligible: item.affiliateEligible,
+        affiliateProvider: item.affiliateProvider,
+        affiliateVerifiedAt: item.affiliateVerifiedAt,
         sellerName: item.sellerName,
         rating: item.rating,
         freeShipping: item.freeShipping ?? false,
@@ -109,8 +115,11 @@ export async function upsertOffers(items: NormalizedOffer[]) {
   return fresh;
 }
 
-export async function listOffers(filters: OfferFilters = {}) {
-  const where: any = { isActive: true };
+export async function listOffers(
+  filters: OfferFilters = {},
+  pagination: { defaultLimit?: number; maxLimit?: number } = {}
+) {
+  const where: any = { isActive: true, affiliateEligible: true, affiliateUrl: { not: null } };
   const marketplace = toMarketplace(filters.marketplace);
   if (marketplace) where.marketplace = marketplace;
   if (filters.keyword) where.normalizedTitle = { contains: filters.keyword.toLowerCase(), mode: 'insensitive' };
@@ -122,7 +131,10 @@ export async function listOffers(filters: OfferFilters = {}) {
   const all = await prisma.offer.findMany({
     where,
     orderBy: [{ score: 'desc' }, { discountPercent: 'desc' }],
-    take: Math.min(Math.max(filters.limit ?? 100, 1), 200)
+    take: Math.min(
+      Math.max(filters.limit ?? pagination.defaultLimit ?? 100, 1),
+      pagination.maxLimit ?? 200
+    )
   });
 
   return all.map(toApiOffer);
@@ -130,7 +142,7 @@ export async function listOffers(filters: OfferFilters = {}) {
 
 export async function getOfferHistory(offerId: string) {
   return prisma.priceHistory.findMany({
-    where: { offerId },
+    where: { offerId, offer: { affiliateEligible: true, affiliateUrl: { not: null } } },
     orderBy: { capturedAt: 'desc' },
     take: 100
   });
@@ -138,10 +150,10 @@ export async function getOfferHistory(offerId: string) {
 
 export async function getStats() {
   const [totalOffers, bestScore, bestDiscount, byMarketplace] = await Promise.all([
-    prisma.offer.count({ where: { isActive: true } }),
-    prisma.offer.findFirst({ where: { isActive: true }, orderBy: { score: 'desc' } }),
-    prisma.offer.findFirst({ where: { isActive: true }, orderBy: { discountPercent: 'desc' } }),
-    prisma.offer.groupBy({ by: ['marketplace'], where: { isActive: true }, _count: { marketplace: true } })
+    prisma.offer.count({ where: { isActive: true, affiliateEligible: true } }),
+    prisma.offer.findFirst({ where: { isActive: true, affiliateEligible: true }, orderBy: { score: 'desc' } }),
+    prisma.offer.findFirst({ where: { isActive: true, affiliateEligible: true }, orderBy: { discountPercent: 'desc' } }),
+    prisma.offer.groupBy({ by: ['marketplace'], where: { isActive: true, affiliateEligible: true }, _count: { marketplace: true } })
   ]);
 
   return {

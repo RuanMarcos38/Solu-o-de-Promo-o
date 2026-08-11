@@ -7,6 +7,7 @@ export type OfferForDispatch = {
   discountPercent?: number;
   productUrl: string;
   affiliateUrl?: string;
+  affiliateEligible: boolean;
   marketplace: string;
   score: number;
 };
@@ -24,10 +25,36 @@ function normalize(value: string) {
 }
 
 export function formatOfferMessage(offer: OfferForDispatch) {
+  if (!offer.affiliateEligible || !offer.affiliateUrl) {
+    throw new Error('Oferta sem link afiliado verificado');
+  }
   const price = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(offer.currentPrice);
   const discount = offer.discountPercent ? `\n🔥 Desconto: ${offer.discountPercent}% OFF` : '';
-  const link = offer.affiliateUrl || offer.productUrl;
-  return `🚨 Oferta encontrada!\n\n${offer.title}\n💰 ${price}${discount}\n⭐ Score: ${offer.score}\n🛒 ${link}`;
+  return `🚨 Oferta encontrada!\n\n${offer.title}\n💰 ${price}${discount}\n⭐ Score: ${offer.score}\n🛒 ${offer.affiliateUrl}`;
+}
+
+export function checkMarketplaceChannelPolicy(
+  offer: OfferForDispatch,
+  channelType: string,
+  channelConfig: Record<string, unknown>
+) {
+  if (!offer.affiliateEligible || !offer.affiliateUrl) {
+    return { allowed: false, reason: 'affiliate_link_not_verified' } as const;
+  }
+
+  if (offer.marketplace.toLowerCase() !== 'mercado_livre' && offer.marketplace.toLowerCase() !== 'mercadolivre') {
+    return { allowed: true } as const;
+  }
+
+  if (channelType === 'whatsapp' || channelType === 'evolution') {
+    return { allowed: false, reason: 'mercado_livre_closed_group_restricted' } as const;
+  }
+
+  if (channelType === 'telegram' && channelConfig.audience !== 'public') {
+    return { allowed: false, reason: 'mercado_livre_requires_public_channel' } as const;
+  }
+
+  return { allowed: true } as const;
 }
 
 export function offerMatchesAlert(offer: OfferForDispatch, alert: AlertForMatch) {
@@ -57,7 +84,7 @@ export function buildDispatchIdempotencyKey(
     currentPrice: offer.currentPrice,
     discountPercent: offer.discountPercent ?? null,
     score: offer.score,
-    targetUrl: offer.affiliateUrl || offer.productUrl
+    targetUrl: offer.affiliateUrl ?? null
   });
 
   return createHash('sha256').update(fingerprint).digest('hex');

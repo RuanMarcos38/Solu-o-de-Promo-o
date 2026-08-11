@@ -4,7 +4,31 @@ import { Redis } from 'ioredis';
 import { config } from './config.js';
 import { operationalConfig, type OperationalAlertChannel } from './operationalConfig.js';
 
-const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+export function resolveRedisConfiguration(rawValue: string | undefined) {
+  const fallbackUrl = 'redis://127.0.0.1:6379/0';
+  if (!rawValue?.trim()) {
+    return { url: fallbackUrl, issue: 'REDIS_URL não configurada' };
+  }
+
+  try {
+    const parsed = new URL(rawValue.trim());
+    if (!['redis:', 'rediss:'].includes(parsed.protocol) || !parsed.hostname) {
+      throw new Error('protocolo ou host inválido');
+    }
+    const port = Number(parsed.port || 6379);
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('porta inválida');
+    return { url: parsed.toString(), issue: undefined };
+  } catch {
+    return {
+      url: fallbackUrl,
+      issue: 'REDIS_URL inválida; use redis:// ou rediss:// com o endereço interno do serviço Redis'
+    };
+  }
+}
+
+const redisConfiguration = resolveRedisConfiguration(process.env.REDIS_URL);
+const redisUrl = redisConfiguration.url;
+export const redisConfigurationIssue = redisConfiguration.issue;
 const parsedRedisUrl = new URL(redisUrl);
 const database = Number(parsedRedisUrl.pathname.replace(/^\//, '') || '0');
 // Queue clients must not make API startup depend on Redis. The worker and queue
@@ -39,6 +63,7 @@ export const COLLECT_QUEUE_NAME = 'collect-offers';
 export const DISPATCH_QUEUE_NAME = 'dispatch-offers';
 export const DISPATCH_DLQ_NAME = 'dispatch-dead-letter';
 export const OPERATIONAL_ALERT_QUEUE_NAME = 'operational-alerts';
+export const COLLECTION_SCHEDULER_ID = 'recurring-default-collection';
 
 export type DispatchJobData = {
   offerId: string;
@@ -160,6 +185,24 @@ export async function enqueueCollectionJob(data: { keyword?: string; marketplace
     removeOnComplete: 100,
     removeOnFail: 100
   });
+}
+
+export async function configureCollectionSchedule(input: { enabled: boolean; intervalSeconds: number }) {
+  if (!input.enabled) {
+    await collectOffersQueue.removeJobScheduler(COLLECTION_SCHEDULER_ID);
+    return { enabled: false, intervalSeconds: input.intervalSeconds };
+  }
+
+  await collectOffersQueue.upsertJobScheduler(
+    COLLECTION_SCHEDULER_ID,
+    { every: input.intervalSeconds * 1000 },
+    {
+      name: 'collect',
+      data: {},
+      opts: { removeOnComplete: 100, removeOnFail: 100 }
+    }
+  );
+  return { enabled: true, intervalSeconds: input.intervalSeconds };
 }
 
 export async function enqueueDispatchJob(

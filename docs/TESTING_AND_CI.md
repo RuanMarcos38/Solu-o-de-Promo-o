@@ -60,7 +60,8 @@ O workflow `.github/workflows/ci.yml` possui duas barreiras.
 1. inicia PostgreSQL 16 e Redis 7 isolados;
 2. aplica migrations no banco `promo_test`;
 3. executa testes unitários e de integração com cobertura V8;
-4. publica a cobertura bruta como artefato por 14 dias.
+4. inicia a API compilada e valida `/health`, `/ready`, `/api/v1/health` e `/openapi.json`;
+5. publica a cobertura bruta como artefato por 14 dias.
 
 ## Variáveis de teste
 

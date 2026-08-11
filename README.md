@@ -2,6 +2,19 @@
 
 Plataforma SaaS para monitorar oportunidades de ofertas em marketplaces confiáveis, normalizar produtos, calcular score de promoção, evitar duplicidade e distribuir ofertas em tempo real para painel web, API, WhatsApp/Telegram/e-mail e canais de afiliados.
 
+## Configuração operacional pelo painel
+
+Administradores podem alterar sem editar código ou reiniciar a API:
+
+- identidade da plataforma e fuso horário;
+- ativação e intervalo do robô de varredura;
+- quantidade máxima de resultados por fonte;
+- desconto e score mínimos para aprovação;
+- ativação e volume máximo de distribuição automática;
+- ativação e limites de paginação da API pública.
+
+As configurações são validadas, versionadas com controle de concorrência e registradas em auditoria. A exigência de link afiliado verificado é permanente e não pode ser desativada. Tokens, senhas e chaves de marketplaces não são aceitos nessa configuração: continuam somente nas variáveis seguras do backend ou nos canais criptografados.
+
 > Objetivo: ser um distribuidor profissional de oportunidades de ofertas usando integrações oficiais, regras de qualidade e atualização ao vivo.
 
 ## Visão do Produto
@@ -32,9 +45,9 @@ A solução foi pensada para operar como um “radar de promoções”:
 
 A arquitetura usa adaptadores por marketplace. Cada adaptador precisa respeitar as regras da plataforma.
 
-- Mercado Livre: busca pública/API oficial por site, termo e categoria.
-- Amazon: conector preparado para Amazon Creators API/Associates, exigindo credenciais de afiliado.
-- Shopee: conector preparado para Shopee Open Platform/Afiliados, exigindo credenciais.
+- Mercado Livre: busca oficial autenticada e resolvedor autorizado de links; o link comum nunca é tratado como afiliado.
+- Amazon: Amazon Creators API com OAuth 2.0, cache de token e links retornados com Partner Tag.
+- Shopee: Shopee Affiliate Open API, assinatura SHA-256 e aceitação exclusiva de `offerLink` rastreável.
 - Outros marketplaces: Magazine Luiza, AliExpress, KaBuM, Casas Bahia, Carrefour, Americanas e lojas parceiras podem ser adicionados com o padrão `MarketplaceAdapter`.
 
 ## Estrutura
@@ -63,7 +76,7 @@ Instale e prepare o projeto:
 
 ```bash
 cp .env.example .env
-npm install
+npm ci
 npm run db:generate
 npm run db:migrate
 ```
@@ -93,7 +106,7 @@ Workflow: `.github/workflows/ci.yml`.
 Executa:
 
 ```bash
-npm install
+npm ci
 npm run db:generate
 npm run lint
 npm run build
@@ -129,7 +142,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify-local.ps1
 
 ### 5. GitHub Codespaces
 
-Abra o repositório no GitHub, clique em **Code > Codespaces > Create codespace**. O arquivo `.devcontainer/devcontainer.json` prepara Node 20, Docker e Prisma.
+Abra o repositório no GitHub, clique em **Code > Codespaces > Create codespace**. O arquivo `.devcontainer/devcontainer.json` prepara Node 24 LTS, Docker e Prisma.
 
 Depois rode:
 
@@ -158,6 +171,10 @@ GET /ready
 GET /offers
 GET /offers/stats
 GET /offers/:id/history
+GET /api/v1/offers
+GET /api/v1/offers/stats
+GET /api/v1/marketplaces
+GET /openapi.json
 POST /collect/run
 POST /collect/enqueue
 GET /admin/system
@@ -179,6 +196,32 @@ DELETE /dispatch/channels/:id
 GET /dispatch/logs
 POST /dispatch/test/:offerId
 ```
+
+`GET /openapi.json` publica o contrato OpenAPI 3.1 da API externa somente leitura. Escritas, coletas e administração continuam protegidas por JWT e RBAC.
+
+### Contrato do resolvedor de afiliados
+
+O Mercado Livre não recebe uma tag inventada. Quando `AFFILIATE_LINK_RESOLVER_URL` estiver configurada, a API envia:
+
+```json
+{
+  "marketplace": "mercadolivre",
+  "externalId": "MLB123",
+  "productUrl": "https://produto.mercadolivre.com.br/..."
+}
+```
+
+O serviço autorizado deve responder:
+
+```json
+{
+  "eligible": true,
+  "affiliateUrl": "https://mercado.li/...",
+  "provider": "portal-mercado-livre"
+}
+```
+
+Respostas sem elegibilidade, sem URL ou com host incompatível são rejeitadas.
 
 ## Painel administrativo
 
@@ -250,6 +293,7 @@ Uma oferta só entra no feed quando passa por critérios mínimos:
 
 - preço atual válido;
 - URL de compra válida;
+- link afiliado emitido/verificado por provedor autorizado;
 - marketplace confiável;
 - imagem válida quando disponível;
 - desconto mínimo configurável;
@@ -262,6 +306,7 @@ Uma oferta só entra no feed quando passa por critérios mínimos:
 Veja os guias:
 
 - `docs/FINAL_HANDOFF.md` — entrega final do projeto.
+- `docs/SUPABASE_SETUP.md` — conexão segura do Prisma ao Supabase e validação das migrations.
 - `docs/GO_LIVE_CHECKLIST.md` — checklist final antes de publicar.
 - `docs/DEPLOY_PRODUCTION.md` — guia geral de produção.
 - `docs/EASYPANEL_DEPLOY.md` — passo a passo para EasyPanel.
@@ -297,7 +342,8 @@ Veja `.env.example` para configurar:
 - Redis;
 - URL pública da API para o frontend;
 - JWT e usuário admin;
-- chaves Amazon/Shopee;
+- credenciais Amazon Creators API e Shopee Affiliate Open API;
+- token do Mercado Livre e resolvedor autorizado de links;
 - tags de afiliado;
 - limites de coleta;
 - desconto mínimo e score mínimo;

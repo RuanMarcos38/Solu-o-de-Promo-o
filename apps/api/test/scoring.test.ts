@@ -15,6 +15,10 @@ function makeOffer(overrides: Partial<NormalizedOffer> = {}): NormalizedOffer {
     discountPercent: 37.5,
     imageUrl: 'https://example.com/image.jpg',
     productUrl: 'https://example.com/product',
+    affiliateUrl: 'https://example.com/affiliate',
+    affiliateEligible: true,
+    affiliateProvider: 'test',
+    affiliateVerifiedAt: new Date('2026-08-08T00:00:00Z'),
     sellerName: 'Loja Oficial',
     rating: 4.8,
     freeShipping: true,
@@ -53,6 +57,8 @@ describe('scoring', () => {
     assert.equal(isApprovedOffer(makeOffer({ score: config.minOpportunityScore })), true);
     assert.equal(isApprovedOffer(makeOffer({ currentPrice: 0 })), false);
     assert.equal(isApprovedOffer(makeOffer({ productUrl: '' })), false);
+    assert.equal(isApprovedOffer(makeOffer({ affiliateUrl: undefined })), false);
+    assert.equal(isApprovedOffer(makeOffer({ affiliateEligible: false })), false);
     assert.equal(isApprovedOffer(makeOffer({ discountPercent: config.minDiscountPercent - 0.01 })), false);
     assert.equal(isApprovedOffer(makeOffer({ score: config.minOpportunityScore - 1 })), false);
   });
