@@ -21,6 +21,8 @@ env \
   FRONTEND_ORIGINS=https://ofertas.r2rmarketingdigital.com.br \
   JWT_SECRET=ci-production-random-jwt-value-7f4c9e2a1b8d6f03 \
   BOOTSTRAP_ADMIN_ENABLED=false \
+  METRICS_ENABLED=false \
+  OTEL_ENABLED=false \
   DATABASE_URL=https://invalid-project.supabase.co \
   REDIS_URL='<URL INTERNA COPIADA DO REDIS>' \
   CHANNEL_CONFIG_ENCRYPTION_KEY='(chave configurada)' \
