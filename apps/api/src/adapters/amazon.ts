@@ -152,6 +152,21 @@ export function parseAmazonPublicSearch(html: string, partnerTag?: string) {
   return offers;
 }
 
+export function amazonPublicKeywordVariants(keyword: string) {
+  const normalized = normalizeTitle(keyword);
+  const variants = [keyword.trim()];
+
+  if (/\biphone\b/.test(normalized) && !/\bapple\b/.test(normalized)) {
+    variants.push(`${keyword.trim()} apple`);
+  }
+
+  if (/\bnotebook\b/.test(normalized)) {
+    variants.push(keyword.replace(/\bnotebook\b/gi, 'laptop').trim());
+  }
+
+  return [...new Set(variants.filter(Boolean))];
+}
+
 export function amazonTokenEndpoint(version: string) {
   if (version.startsWith('2.')) return 'https://creatorsapi.auth.us-east-1.amazoncognito.com/oauth2/token';
   if (version.startsWith('3.')) return 'https://api.amazon.com/auth/o2/token';
@@ -277,41 +292,45 @@ async function searchAmazonPublic(input: SearchInput) {
 async function searchAmazonPublicResilient(input: SearchInput) {
   const limit = Math.min(Math.max(input.limit ?? 10, 1), 24);
   const host = config.amazonMarketplace.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const query = new URLSearchParams({ k: input.keyword }).toString();
-  const urls = [
-    `https://${host}/s?${new URLSearchParams({ i: 'aps', k: input.keyword, ref: 'nb_sb_noss' }).toString()}`,
-    `https://${host}/s?${query}`,
-    `https://${host}/gp/aw/s?${query}`
-  ];
   const failures: string[] = [];
 
-  for (const headers of [desktopBrowserHeaders, mobileBrowserHeaders]) {
-    let cookies = '';
-    try {
-      const home = await fetchExternal(`https://${host}/`, { headers });
-      cookies = cookieHeader(home);
-    } catch {
-      cookies = '';
-    }
+  for (const keyword of amazonPublicKeywordVariants(input.keyword)) {
+    const query = new URLSearchParams({ k: keyword }).toString();
+    const urls = [
+      `https://${host}/s?${new URLSearchParams({ i: 'aps', k: keyword, ref: 'nb_sb_noss' }).toString()}`,
+      `https://${host}/-/pt/s?${query}`,
+      `https://${host}/s?${query}`,
+      `https://${host}/gp/aw/s?${query}`
+    ];
 
-    for (const url of urls) {
-      const response = await fetchExternal(url, {
-        headers: {
-          ...headers,
-          Referer: `https://${host}/`,
-          ...(cookies ? { Cookie: cookies } : {})
-        }
-      });
-
-      if (!response.ok) {
-        failures.push(`HTTP ${response.status}`);
-        continue;
+    for (const headers of [desktopBrowserHeaders, mobileBrowserHeaders]) {
+      let cookies = '';
+      try {
+        const home = await fetchExternal(`https://${host}/`, { headers });
+        cookies = cookieHeader(home);
+      } catch {
+        cookies = '';
       }
 
-      const html = await response.text();
-      const offers = parseAmazonPublicSearch(html, config.amazonPartnerTag);
-      if (offers.length > 0) return offers.slice(0, limit);
-      failures.push('sem produtos legiveis');
+      for (const url of urls) {
+        const response = await fetchExternal(url, {
+          headers: {
+            ...headers,
+            Referer: `https://${host}/`,
+            ...(cookies ? { Cookie: cookies } : {})
+          }
+        });
+
+        if (!response.ok) {
+          failures.push(`HTTP ${response.status}`);
+          continue;
+        }
+
+        const html = await response.text();
+        const offers = parseAmazonPublicSearch(html, config.amazonPartnerTag);
+        if (offers.length > 0) return offers.slice(0, limit);
+        failures.push('sem produtos legiveis');
+      }
     }
   }
 

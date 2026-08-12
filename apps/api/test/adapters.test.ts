@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { amazonTokenEndpoint, normalizeAmazonItem, normalizeAmazonPublicBlock } from '../src/adapters/amazon.js';
+import { amazonPublicKeywordVariants, amazonTokenEndpoint, normalizeAmazonItem, normalizeAmazonPublicBlock } from '../src/adapters/amazon.js';
 import { normalizeMercadoLivreItem, parseMercadoLivreOfferPage } from '../src/adapters/mercadoLivre.js';
 import { createShopeeSignature, normalizeShopeeNode } from '../src/adapters/shopee.js';
 
@@ -45,6 +45,12 @@ describe('adaptadores de marketplaces', () => {
     assert.match(amazonTokenEndpoint('2.1'), /amazoncognito\.com/);
     assert.equal(amazonTokenEndpoint('3.1'), 'https://api.amazon.com/auth/o2/token');
     assert.throws(() => amazonTokenEndpoint('1.0'), /não suportada/);
+  });
+
+  test('usa variacoes conservadoras quando a vitrine publica da Amazon bloqueia termos comuns', () => {
+    assert.deepEqual(amazonPublicKeywordVariants('iphone'), ['iphone', 'iphone apple']);
+    assert.deepEqual(amazonPublicKeywordVariants('notebook gamer'), ['notebook gamer', 'laptop gamer']);
+    assert.deepEqual(amazonPublicKeywordVariants('fone bluetooth'), ['fone bluetooth']);
   });
 
   test('normaliza vitrine pública da Amazon quando credenciais oficiais ainda não existem', () => {
