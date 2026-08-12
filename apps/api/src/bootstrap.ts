@@ -37,6 +37,16 @@ const optionalNumber = z.preprocess(
   z.number().finite().optional()
 );
 
+const optionalBoolean = z.preprocess(
+  (value) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return ['1', 'true', 'yes', 'sim', 'on'].includes(value.trim().toLowerCase());
+    return Boolean(value);
+  },
+  z.boolean().optional()
+);
+
 const marketplaceNameSchema = z.enum(['mercadolivre', 'amazon', 'shopee', 'magalu', 'aliexpress', 'other']);
 
 const offersQuerySchema = z.object({
@@ -46,7 +56,8 @@ const offersQuerySchema = z.object({
   minDiscount: optionalNumber,
   maxPrice: optionalNumber,
   minScore: optionalNumber,
-  limit: optionalNumber
+  limit: optionalNumber,
+  includeUntracked: optionalBoolean
 });
 
 const loginSchema = z.object({
@@ -392,6 +403,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     const { settings } = await getPlatformSettings();
     if (!settings.publicApi.enabled) return reply.status(503).send({ message: 'API pública temporariamente desativada' });
     return { marketplaces: getMarketplaceStatuses() };
+  });
+  app.post('/api/v1/collect/run', async (request, reply) => {
+    const { settings } = await getPlatformSettings();
+    if (!settings.publicApi.enabled) return reply.status(503).send({ message: 'API pública temporariamente desativada' });
+    const body = collectionSchema.parse(request.body ?? {});
+    if (!body.keyword) return reply.status(400).send({ message: 'Informe uma palavra-chave para buscar ofertas agora.' });
+    const result = await runCollection({ keyword: body.keyword, marketplace: toMarketplaceName(body.marketplace) });
+    emitNewOffers(result.offers);
+    emitStats(await getStats());
+    return result;
   });
   app.get('/offers/:id/history', async (request) => {
     const params = idParamsSchema.parse(request.params);

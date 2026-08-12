@@ -10,8 +10,8 @@ type Offer = {
   discountPercent?: number;
   imageUrl?: string;
   productUrl: string;
-  affiliateUrl: string;
-  affiliateEligible: true;
+  affiliateUrl?: string;
+  affiliateEligible: boolean;
   affiliateProvider?: string;
   score: number;
 };
@@ -58,10 +58,93 @@ type PlatformSettingsRecord = {
   source: 'database' | 'environment-defaults';
 };
 
+type Language = 'pt-BR' | 'en-US' | 'es-ES';
+
 const apiUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:3333').replace(/\/$/, '');
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const apiUnavailableMessage = 'A API está indisponível no momento. Verifique o serviço api no EasyPanel e tente novamente.';
+
+const languages: Record<Language, { label: string; short: string; copy: Record<string, string> }> = {
+  'pt-BR': {
+    label: 'Português do Brasil',
+    short: 'PT-BR',
+    copy: {
+      badge: 'Radar ao vivo',
+      logout: 'Sair',
+      hero: 'Painel para encontrar oportunidades em marketplaces confiáveis, aprovar ofertas por score e distribuir automaticamente conforme alertas ativos.',
+      filter: 'Filtrar',
+      searchNow: 'Buscar e mostrar agora',
+      searching: 'Buscando...',
+      refresh: 'Atualizar operação',
+      result: 'Resultado imediato',
+      offersFound: 'Ofertas encontradas',
+      emptyTitle: 'Nenhuma oferta na tela ainda',
+      emptyText: 'Use "Buscar e mostrar agora" para consultar o marketplace e carregar os resultados imediatamente.',
+      affiliateLink: 'Ver oferta afiliada',
+      productLink: 'Ver oferta',
+      untracked: 'Link não rastreado',
+      approved: 'Ofertas aprovadas',
+      bestScore: 'Melhor score',
+      bestDiscount: 'Maior desconto',
+      ready: 'Pronto',
+      pending: 'Configuração pendente',
+      disabled: 'Desativado'
+    }
+  },
+  'en-US': {
+    label: 'English',
+    short: 'EN',
+    copy: {
+      badge: 'Live radar',
+      logout: 'Sign out',
+      hero: 'Dashboard to find marketplace opportunities, approve offers by score, and distribute them automatically according to active alerts.',
+      filter: 'Filter',
+      searchNow: 'Search and show now',
+      searching: 'Searching...',
+      refresh: 'Refresh operation',
+      result: 'Immediate result',
+      offersFound: 'Offers found',
+      emptyTitle: 'No offers on screen yet',
+      emptyText: 'Use "Search and show now" to query the marketplace and load results immediately.',
+      affiliateLink: 'View affiliate offer',
+      productLink: 'View offer',
+      untracked: 'Untracked link',
+      approved: 'Approved offers',
+      bestScore: 'Best score',
+      bestDiscount: 'Biggest discount',
+      ready: 'Ready',
+      pending: 'Configuration pending',
+      disabled: 'Disabled'
+    }
+  },
+  'es-ES': {
+    label: 'Español',
+    short: 'ES',
+    copy: {
+      badge: 'Radar en vivo',
+      logout: 'Salir',
+      hero: 'Panel para encontrar oportunidades en marketplaces confiables, aprobar ofertas por score y distribuirlas automáticamente según alertas activas.',
+      filter: 'Filtrar',
+      searchNow: 'Buscar y mostrar ahora',
+      searching: 'Buscando...',
+      refresh: 'Actualizar operación',
+      result: 'Resultado inmediato',
+      offersFound: 'Ofertas encontradas',
+      emptyTitle: 'Todavía no hay ofertas en pantalla',
+      emptyText: 'Usa "Buscar y mostrar ahora" para consultar el marketplace y cargar los resultados de inmediato.',
+      affiliateLink: 'Ver oferta afiliada',
+      productLink: 'Ver oferta',
+      untracked: 'Enlace no rastreado',
+      approved: 'Ofertas aprobadas',
+      bestScore: 'Mejor score',
+      bestDiscount: 'Mayor descuento',
+      ready: 'Listo',
+      pending: 'Configuración pendiente',
+      disabled: 'Desactivado'
+    }
+  }
+};
 
 const channelExamples: Record<string, string> = {
   webhook: '{"url":"https://seu-webhook.com/ofertas"}',
@@ -96,10 +179,15 @@ export function App() {
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState('VIEWER');
   const [statusMessage, setStatusMessage] = useState('');
+  const [language, setLanguage] = useState<Language>(() => {
+    const saved = localStorage.getItem('promo_language') as Language | null;
+    return saved && saved in languages ? saved : 'pt-BR';
+  });
 
   const isAdmin = currentUser?.role === 'ADMIN';
   const canEdit = currentUser?.role === 'ADMIN' || currentUser?.role === 'EDITOR';
   const statusIsError = /erro|inválid|indisponível|falha|failed|não foi possível/i.test(statusMessage);
+  const t = languages[language].copy;
 
   function logout() {
     sessionStorage.removeItem('promo_token');
@@ -175,6 +263,7 @@ export function App() {
     if (keyword) params.set('keyword', keyword);
     if (marketplace) params.set('marketplace', marketplace);
     if (minDiscount) params.set('minDiscount', minDiscount);
+    params.set('includeUntracked', 'true');
     try {
       const [offersResponse, statsResponse, marketplacesResponse] = await Promise.all([
         fetch(`${apiUrl}/api/v1/offers?${params.toString()}`),
@@ -236,9 +325,17 @@ export function App() {
     setCollecting(true);
     setStatusMessage('');
     try {
-      const response = await apiFetch('/collect/run', { method: 'POST', body: JSON.stringify({ keyword, marketplace }) });
-      const result = await response.json() as { approved?: Offer[]; approvedCount?: number; errors?: Array<{ error: string }> };
-      const immediateOffers = result.approved ?? [];
+      const response = await fetch(`${apiUrl}/api/v1/collect/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword, marketplace })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(data?.message || apiUnavailableMessage);
+      }
+      const result = await response.json() as { offers?: Offer[]; approved?: Offer[]; approvedCount?: number; foundCount?: number; errors?: Array<{ error: string }> };
+      const immediateOffers = result.offers ?? result.approved ?? [];
 
       if (immediateOffers.length > 0) {
         setOffers((current) => {
@@ -255,12 +352,12 @@ export function App() {
       }
 
       const [visibleOffers] = await Promise.all([loadData(), loadAdminData()]);
-      const visibleCount = visibleOffers.length || immediateOffers.length || result.approvedCount || 0;
+      const visibleCount = visibleOffers.length || immediateOffers.length || result.foundCount || result.approvedCount || 0;
       const errorHint = result.errors?.length ? ` ${result.errors.map((item) => item.error).join(' ')}` : '';
       setStatusMessage(
         visibleCount > 0
           ? `${visibleCount} oferta(s) exibidas agora.${errorHint}`
-          : `Nenhuma oferta aprovada encontrada para este filtro.${errorHint}`
+          : `Nenhuma oferta encontrada para este filtro.${errorHint}`
       );
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Erro ao buscar ofertas agora.');
@@ -378,6 +475,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem('promo_language', language);
+  }, [language]);
+
+  useEffect(() => {
     if (token && !currentUser) loadSessionUser().catch(() => undefined);
   }, [token]);
 
@@ -408,9 +509,20 @@ export function App() {
   return (
     <main className="app-shell">
       <section className="hero">
-        <div className="topbar"><span className="badge">Radar ao vivo {currentUser ? `• ${currentUser.role}` : ''}</span><button className="ghost-button" onClick={logout}>Sair</button></div>
+        <div className="topbar">
+          <span className="badge">{t.badge} {currentUser ? `• ${currentUser.role}` : ''}</span>
+          <div className="topbar-actions">
+            <label className="language-select" htmlFor="language">
+              <span>Idioma</span>
+              <select id="language" value={language} onChange={(event) => setLanguage(event.target.value as Language)} aria-label="Idioma da interface">
+                {Object.entries(languages).map(([code, item]) => <option key={code} value={code}>{item.short}</option>)}
+              </select>
+            </label>
+            <button className="ghost-button" onClick={logout}>{t.logout}</button>
+          </div>
+        </div>
         <h1>{platformSettings?.settings.branding.platformName ?? 'Solução de Promoção'}</h1>
-        <p>Painel para encontrar oportunidades em marketplaces confiáveis, aprovar ofertas por score e distribuir automaticamente conforme alertas ativos.</p>
+        <p>{t.hero}</p>
         <div className="collector-actions">
           <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="iphone, notebook, smart tv..." />
           <select value={marketplace} onChange={(event) => setMarketplace(event.target.value)}>
@@ -419,17 +531,17 @@ export function App() {
             <option value="shopee">Shopee</option>
           </select>
           <input value={minDiscount} onChange={(event) => setMinDiscount(event.target.value)} placeholder="Desconto mínimo" />
-          <button onClick={loadData}>Filtrar</button>
-          {canEdit ? <button className="primary-action" onClick={collectNow} disabled={collecting}>{collecting ? 'Buscando...' : 'Buscar e mostrar agora'}</button> : null}
-          <button onClick={loadAdminData}>Atualizar operação</button>
+          <button onClick={loadData}>{t.filter}</button>
+          {canEdit ? <button className="primary-action" onClick={collectNow} disabled={collecting}>{collecting ? t.searching : t.searchNow}</button> : null}
+          <button onClick={loadAdminData}>{t.refresh}</button>
         </div>
         {statusMessage ? <p className={`status-message${statusIsError ? ' status-error' : ''}`} role="status">{statusMessage}</p> : null}
       </section>
 
       <section className="results-heading">
         <div>
-          <span className="eyebrow">Resultado imediato</span>
-          <h2>Ofertas encontradas</h2>
+          <span className="eyebrow">{t.result}</span>
+          <h2>{t.offersFound}</h2>
         </div>
         <strong>{offers.length}</strong>
       </section>
@@ -443,29 +555,30 @@ export function App() {
               <h2>{offer.title}</h2>
               <strong>{money.format(offer.currentPrice)}</strong>
               {offer.discountPercent ? <p>{offer.discountPercent}% OFF</p> : null}
-              <a href={offer.affiliateUrl} target="_blank" rel="noreferrer sponsored">Ver oferta afiliada</a>
+              {!offer.affiliateEligible ? <p className="tracking-note">{t.untracked}</p> : null}
+              <a href={offer.affiliateUrl ?? offer.productUrl} target="_blank" rel="noreferrer sponsored">{offer.affiliateEligible ? t.affiliateLink : t.productLink}</a>
             </div>
           </article>
         ))}
         {!offers.length ? (
           <article className="empty-results">
-            <h2>Nenhuma oferta na tela ainda</h2>
-            <p>Use "Buscar e mostrar agora" para consultar o marketplace e carregar os resultados imediatamente.</p>
+            <h2>{t.emptyTitle}</h2>
+            <p>{t.emptyText}</p>
           </article>
         ) : null}
       </section>
 
       <section className="stats-grid">
-        <article><strong>{stats.totalOffers}</strong><span>Ofertas aprovadas</span></article>
-        <article><strong>{stats.bestScore}</strong><span>Melhor score</span></article>
-        <article><strong>{stats.bestDiscount}%</strong><span>Maior desconto</span></article>
+        <article><strong>{stats.totalOffers}</strong><span>{t.approved}</span></article>
+        <article><strong>{stats.bestScore}</strong><span>{t.bestScore}</span></article>
+        <article><strong>{stats.bestDiscount}%</strong><span>{t.bestDiscount}</span></article>
       </section>
 
       <section className="admin-grid">
         {marketplaceStatuses.map((status) => (
           <article key={status.marketplace}>
             <h3>{status.marketplace}</h3>
-            <strong>{status.configured ? 'Pronto' : status.enabled ? 'Configuração pendente' : 'Desativado'}</strong>
+            <strong>{status.configured ? t.ready : status.enabled ? t.pending : t.disabled}</strong>
             <p className="panel-hint">{status.detail}</p>
           </article>
         ))}

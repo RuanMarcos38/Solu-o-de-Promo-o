@@ -9,6 +9,7 @@ export async function runCollection(options?: { keyword?: string; marketplace?: 
   const { settings } = await getPlatformSettings();
   const targets = await getCollectionTargets(options);
   const approved = [];
+  const collected = [];
   const errors = [];
 
   for (const target of targets) {
@@ -20,8 +21,12 @@ export async function runCollection(options?: { keyword?: string; marketplace?: 
 
     try {
       const found = await adapter.search({ keyword: target.keyword, limit: settings.collection.maxResultsPerSource });
-      const saved = await upsertOffers(found, settings.qualification);
-      approved.push(...saved);
+      const criteria = options?.keyword
+        ? { ...settings.qualification, minDiscountPercent: 0, minOpportunityScore: 0, requireVerifiedAffiliateLinks: false }
+        : settings.qualification;
+      const saved = await upsertOffers(found, criteria);
+      collected.push(...saved);
+      approved.push(...saved.filter((offer) => offer.affiliateEligible && offer.affiliateUrl));
     } catch (error) {
       errors.push({ marketplace: adapter.name, keyword: target.keyword, error: error instanceof Error ? error.message : 'Erro desconhecido' });
     }
@@ -33,8 +38,10 @@ export async function runCollection(options?: { keyword?: string; marketplace?: 
 
   return {
     approved,
+    offers: options?.keyword ? collected : approved,
     errors,
     approvedCount: approved.length,
+    foundCount: collected.length,
     dispatchEnabled: settings.dispatch.automaticEnabled
   };
 }

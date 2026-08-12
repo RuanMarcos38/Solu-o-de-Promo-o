@@ -6,8 +6,8 @@ import { config } from '../config.js';
 
 export const adapters: MarketplaceAdapter[] = [
   mercadoLivreAdapter,
-  ...(config.amazonEnabled ? [amazonAdapter] : []),
-  ...(config.shopeeEnabled ? [shopeeAdapter] : [])
+  amazonAdapter,
+  shopeeAdapter
 ];
 
 export function getAdapter(name: MarketplaceName) {
@@ -19,25 +19,31 @@ export function getMarketplaceStatuses() {
     {
       marketplace: 'mercadolivre',
       enabled: true,
-      configured: Boolean(config.mercadoLivreAccessToken && config.affiliateResolverUrl),
+      configured: Boolean(config.mercadoLivreAccessToken),
       affiliateLinks: Boolean(config.affiliateResolverUrl),
-      detail: config.affiliateResolverUrl
-        ? 'Busca oficial e resolvedor autorizado configurados.'
-        : 'Exige token de busca e resolvedor autorizado para gerar links rastreáveis.'
+      detail: config.mercadoLivreAccessToken
+        ? config.affiliateResolverUrl
+          ? 'Busca oficial e resolvedor autorizado configurados.'
+          : 'Busca oficial configurada. Cadastre o resolvedor autorizado para gerar links rastreáveis.'
+        : 'Conector ativo para busca. Cadastre MERCADO_LIVRE_ACCESS_TOKEN no EasyPanel para reduzir bloqueios da API oficial.'
     },
     {
       marketplace: 'amazon',
-      enabled: config.amazonEnabled,
+      enabled: true,
       configured: Boolean(config.amazonEnabled && config.amazonCredentialId && config.amazonCredentialSecret && config.amazonPartnerTag),
-      affiliateLinks: Boolean(config.amazonEnabled && config.amazonPartnerTag),
-      detail: 'Usa Amazon Creators API com OAuth 2.0.'
+      affiliateLinks: Boolean(config.amazonPartnerTag),
+      detail: config.amazonEnabled && config.amazonCredentialId && config.amazonCredentialSecret && config.amazonPartnerTag
+        ? 'Amazon Creators API configurada com OAuth 2.0 e Partner Tag.'
+        : 'Busca pública de exibição ativa. Para links rastreáveis, configure Amazon Creators API e AMAZON_PARTNER_TAG.'
     },
     {
       marketplace: 'shopee',
-      enabled: config.shopeeEnabled,
+      enabled: true,
       configured: Boolean(config.shopeeEnabled && config.shopeeAppId && config.shopeeSecret),
       affiliateLinks: Boolean(config.shopeeEnabled && config.shopeeAppId && config.shopeeSecret),
-      detail: 'Usa Shopee Affiliate Open API e aceita apenas offerLink rastreável.'
+      detail: config.shopeeEnabled && config.shopeeAppId && config.shopeeSecret
+        ? 'Shopee Affiliate Open API configurada e pronta para retornar offerLink rastreável.'
+        : 'Conector preparado. Cadastre SHOPEE_APP_ID e SHOPEE_SECRET no EasyPanel para ativar a busca oficial.'
     }
   ];
 }

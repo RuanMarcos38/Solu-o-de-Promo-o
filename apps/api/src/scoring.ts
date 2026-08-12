@@ -4,7 +4,7 @@ import { config } from './config.js';
 export type QualificationCriteria = {
   minDiscountPercent: number;
   minOpportunityScore: number;
-  requireVerifiedAffiliateLinks: true;
+  requireVerifiedAffiliateLinks: boolean;
 };
 
 export function normalizeTitle(title: string) {
@@ -42,7 +42,7 @@ export function isApprovedOffer(offer: NormalizedOffer, criteria: QualificationC
   const affiliateApproved = Boolean(offer.affiliateEligible && offer.affiliateUrl);
   return offer.currentPrice > 0
     && Boolean(offer.productUrl)
-    && affiliateApproved
+    && (!criteria.requireVerifiedAffiliateLinks || affiliateApproved)
     && discount >= criteria.minDiscountPercent
     && offer.score >= criteria.minOpportunityScore;
 }

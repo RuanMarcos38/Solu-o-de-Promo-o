@@ -34,6 +34,110 @@ type TokenResponse = { access_token?: string; expires_in?: number; token_type?: 
 
 let cachedToken: { value: string; expiresAt: number } | undefined;
 
+function decodeHtml(value: string) {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_match, code) => String.fromCharCode(Number.parseInt(code, 16)));
+}
+
+function parseBrazilianCurrency(value: string | undefined) {
+  if (!value) return undefined;
+  const normalized = decodeHtml(value)
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+    .replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseRating(value: string | undefined) {
+  if (!value) return undefined;
+  const parsed = Number(decodeHtml(value).replace(',', '.').match(/\d+(?:\.\d+)?/)?.[0]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function firstMatch(value: string, pattern: RegExp) {
+  return value.match(pattern)?.[1];
+}
+
+function normalizeAmazonUrl(rawUrl: string, partnerTag?: string) {
+  const decoded = decodeHtml(rawUrl.trim());
+  const parsed = new URL(decoded, `https://${config.amazonMarketplace}`);
+  if (!['http:', 'https:'].includes(parsed.protocol)) return undefined;
+  parsed.protocol = 'https:';
+  parsed.hostname = config.amazonMarketplace.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  if (partnerTag) parsed.searchParams.set('tag', partnerTag);
+  return parsed.toString();
+}
+
+export function normalizeAmazonPublicBlock(asin: string, block: string, partnerTag?: string): NormalizedOffer | null {
+  const title = decodeHtml(
+    firstMatch(block, /<h2[^>]*aria-label="([^"]+)"/i)
+      ?? firstMatch(block, /<img[^>]*class="[^"]*\bs-image\b[^"]*"[^>]*alt="([^"]+)"/i)
+      ?? firstMatch(block, /<h2[\s\S]*?<span[^>]*>([\s\S]*?)<\/span>/i)
+      ?? ''
+  ).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const href = firstMatch(block, /href="([^"]*\/dp\/[A-Z0-9]{10}[^"]*)"/i)
+    ?? firstMatch(block, /data-cy="title-recipe"[\s\S]*?<a[^>]*href="([^"]+)"/i)
+    ?? `/dp/${asin}`;
+  const imageUrl = decodeHtml(firstMatch(block, /<img[^>]*class="[^"]*\bs-image\b[^"]*"[^>]*src="([^"]+)"/i) ?? '');
+  const priceCandidates = [...block.matchAll(/<span class="a-offscreen">(?:De:\s*)?(R\$\s*[\d.]+,\d{2})<\/span>/g)]
+    .map((match) => parseBrazilianCurrency(match[1]))
+    .filter((value): value is number => value !== undefined && value > 0);
+  const currentPrice = priceCandidates[0] ?? 0;
+  const originalPrice = priceCandidates.find((price) => price > currentPrice);
+  const rating = parseRating(firstMatch(block, /aria-label="([\d,.]+)\s+de\s+5\s+estrelas/i));
+
+  if (!asin || !title || currentPrice <= 0) return null;
+
+  const productUrl = normalizeAmazonUrl(href);
+  const affiliateUrl = partnerTag ? normalizeAmazonUrl(href, partnerTag) : undefined;
+  if (!productUrl) return null;
+  const base: Omit<NormalizedOffer, 'score'> = {
+    externalId: asin,
+    marketplace: 'amazon',
+    title,
+    normalizedTitle: normalizeTitle(title),
+    currentPrice,
+    originalPrice,
+    discountPercent: calculateDiscount(currentPrice, originalPrice),
+    imageUrl: imageUrl || undefined,
+    productUrl,
+    affiliateUrl,
+    affiliateEligible: Boolean(affiliateUrl),
+    affiliateProvider: affiliateUrl ? 'amazon-partner-tag' : undefined,
+    affiliateVerifiedAt: affiliateUrl ? new Date() : undefined,
+    rating,
+    freeShipping: /Entrega\s+GR[ÁA]TIS|Frete\s+GR[ÁA]TIS/i.test(block)
+  };
+
+  return { ...base, score: calculateScore(base) };
+}
+
+export function parseAmazonPublicSearch(html: string, partnerTag?: string) {
+  const chunks = html.split(/<div role="listitem" data-asin="/i).slice(1);
+  const offers = [];
+  const seen = new Set<string>();
+
+  for (const chunk of chunks) {
+    if (!/data-component-type="s-search-result"/i.test(chunk)) continue;
+    const asin = chunk.match(/^([A-Z0-9]{10})"/)?.[1];
+    if (!asin || seen.has(asin)) continue;
+    const offer = normalizeAmazonPublicBlock(asin, chunk, partnerTag);
+    if (!offer) continue;
+    seen.add(asin);
+    offers.push(offer);
+  }
+
+  return offers;
+}
+
 export function amazonTokenEndpoint(version: string) {
   if (version.startsWith('2.')) return 'https://creatorsapi.auth.us-east-1.amazoncognito.com/oauth2/token';
   if (version.startsWith('3.')) return 'https://api.amazon.com/auth/o2/token';
@@ -127,11 +231,30 @@ async function fetchAccessToken() {
   return cachedToken.value;
 }
 
+async function searchAmazonPublic(input: SearchInput) {
+  const limit = Math.min(Math.max(input.limit ?? 10, 1), 24);
+  const searchUrl = `https://${config.amazonMarketplace.replace(/^https?:\/\//, '').replace(/\/$/, '')}/s?${new URLSearchParams({ k: input.keyword }).toString()}`;
+  const response = await fetchExternal(searchUrl, {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
+    }
+  });
+
+  if (!response.ok) throw new Error(`Amazon Brasil retornou HTTP ${response.status}`);
+  const html = await response.text();
+  const offers = parseAmazonPublicSearch(html, config.amazonPartnerTag);
+  if (offers.length === 0) throw new Error('Amazon Brasil não retornou produtos legíveis para esta busca');
+  return offers.slice(0, limit);
+}
+
 export const amazonAdapter: MarketplaceAdapter = {
   name: 'amazon',
   async search(input: SearchInput): Promise<NormalizedOffer[]> {
-    if (!config.amazonEnabled) throw new Error('Amazon Creators API está desabilitada');
-    if (!config.amazonPartnerTag) throw new Error('Amazon Creators API sem partner tag');
+    if (!config.amazonEnabled || !config.amazonCredentialId || !config.amazonCredentialSecret || !config.amazonPartnerTag) {
+      return searchAmazonPublic(input);
+    }
 
     const accessToken = await fetchAccessToken();
     const itemCount = Math.min(Math.max(input.limit ?? 10, 1), 10);

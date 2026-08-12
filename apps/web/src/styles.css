@@ -35,6 +35,16 @@ img, video { display: block; max-width: 100%; }
 }
 
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.topbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.language-select { display: flex; align-items: center; gap: 8px; color: #cbd5e1; font-size: .78rem; font-weight: 850; }
+.language-select select {
+  width: auto;
+  min-width: 92px;
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, .12);
+}
 .badge, .eyebrow {
   width: fit-content;
   padding: 8px 12px;
@@ -114,6 +124,7 @@ button:disabled { opacity: .65; cursor: progress; }
 .offer-card h2 { min-height: 68px; margin: 10px 0; font-size: 1rem; line-height: 1.35; }
 .offer-card strong { font-size: 1.35rem; }
 .offer-card p { margin: 8px 0 0; color: #bbf7d0; font-weight: 800; }
+.offer-card .tracking-note { color: #fde68a; font-size: .78rem; }
 .offer-card a { display: inline-flex; margin-top: 12px; color: #7dd3fc; font-weight: 850; text-decoration: none; }
 .marketplace { color: #93c5fd; font-size: .76rem; font-weight: 850; text-transform: uppercase; letter-spacing: .08em; }
 .empty-results {
@@ -206,9 +217,11 @@ button:disabled { opacity: .65; cursor: progress; }
   h1 { font-size: clamp(2.15rem, 12vw, 3rem); line-height: 1; overflow-wrap: anywhere; }
   p { line-height: 1.55; }
   input, select, textarea { font-size: 16px; }
-  .topbar, .results-heading { align-items: stretch; flex-direction: column; }
+  .topbar, .topbar-actions, .results-heading { align-items: stretch; flex-direction: column; }
   .topbar .badge { max-width: 100%; }
   .topbar button, .collector-actions > *, .mini-actions > * { width: 100%; flex-basis: 100%; }
+  .language-select { align-items: stretch; flex-direction: column; }
+  .language-select select { width: 100%; }
   .compact-row, .operations-row, .dlq-row { align-items: stretch; flex-direction: column; }
   .compact-row button, .operations-row button { width: 100%; }
   .ops-metrics { grid-template-columns: 1fr; }

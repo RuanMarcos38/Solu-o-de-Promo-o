@@ -62,4 +62,17 @@ describe('scoring', () => {
     assert.equal(isApprovedOffer(makeOffer({ discountPercent: config.minDiscountPercent - 0.01 })), false);
     assert.equal(isApprovedOffer(makeOffer({ score: config.minOpportunityScore - 1 })), false);
   });
+
+  test('permite vitrine imediata sem link afiliado quando a regra pedir explicitamente', () => {
+    assert.equal(isApprovedOffer(makeOffer({
+      affiliateUrl: undefined,
+      affiliateEligible: false,
+      discountPercent: 0,
+      score: 12
+    }), {
+      minDiscountPercent: 0,
+      minOpportunityScore: 0,
+      requireVerifiedAffiliateLinks: false
+    }), true);
+  });
 });

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { amazonTokenEndpoint, normalizeAmazonItem } from '../src/adapters/amazon.js';
-import { normalizeMercadoLivreItem } from '../src/adapters/mercadoLivre.js';
+import { amazonTokenEndpoint, normalizeAmazonItem, normalizeAmazonPublicBlock } from '../src/adapters/amazon.js';
+import { normalizeMercadoLivreItem, parseMercadoLivreOfferPage } from '../src/adapters/mercadoLivre.js';
 import { createShopeeSignature, normalizeShopeeNode } from '../src/adapters/shopee.js';
 
 describe('adaptadores de marketplaces', () => {
@@ -45,6 +45,51 @@ describe('adaptadores de marketplaces', () => {
     assert.match(amazonTokenEndpoint('2.1'), /amazoncognito\.com/);
     assert.equal(amazonTokenEndpoint('3.1'), 'https://api.amazon.com/auth/o2/token');
     assert.throws(() => amazonTokenEndpoint('1.0'), /não suportada/);
+  });
+
+  test('normaliza vitrine pública da Amazon quando credenciais oficiais ainda não existem', () => {
+    const offer = normalizeAmazonPublicBlock('B07JQKQ91F', `
+      <img class="s-image" src="https://m.media-amazon.com/images/I/fone.jpg" alt="JBL, Fone de Ouvido in Ear, C50HI - Preto"/>
+      <div data-cy="title-recipe"><a href="/Ouvido-JBL-C50HI-Intra-Auricular-Preto/dp/B07JQKQ91F/ref=sr_1_7"><h2 aria-label="JBL, Fone de Ouvido in Ear, C50HI - Preto"><span>JBL, Fone de Ouvido in Ear, C50HI - Preto</span></h2></a></div>
+      <span class="a-offscreen">R$57,09</span>
+      <span class="a-offscreen">De: R$74,90</span>
+      <a aria-label="4,6 de 5 estrelas"></a>
+      Entrega GRÁTIS
+    `);
+
+    assert.ok(offer);
+    assert.equal(offer.affiliateEligible, false);
+    assert.equal(offer.currentPrice, 57.09);
+    assert.equal(offer.originalPrice, 74.9);
+    assert.equal(offer.discountPercent, 23.78);
+    assert.equal(offer.rating, 4.6);
+  });
+
+  test('normaliza JSON embutido da página de ofertas do Mercado Livre', () => {
+    const offers = parseMercadoLivreOfferPage(`
+      <script id="__NEXT_DATA__" type="application/json">{
+        "props":{"pageProps":{"data":{"items":[{
+          "card":{
+            "metadata":{"id":"MLB4555189589","url":"www.mercadolivre.com.br/produto/p/MLB66637233","url_params":"?pdp_filters=deal%3AMLB779362-1","url_fragments":"#tracking"},
+            "pictures":{"pictures":[{"id":"602304-MLA109372354737_032026"}]},
+            "components":[
+              {"type":"title","title":{"text":"Creatina Monohidratada 500g Growth Supplements - Sem Sabor em Pó"}},
+              {"type":"seller","seller":{"values":[{"label":{"text":"Loja Oficial"}}]}},
+              {"type":"reviews","reviews":{"rating_average":4.9}},
+              {"type":"price","price":{"price_labels":[{"values":[{"pill":{"text":"24% OFF"}},{"price":{"value":104.9,"previous":true}}]}],"current_price":{"value":78.9,"currency":"BRL"}}},
+              {"type":"shipping_v2","shipping_v2":[{"values":[{"label":{"text":"Frete grátis"}}]}]}
+            ]
+          }
+        }]}}}
+      }</script>
+    `);
+
+    assert.equal(offers.length, 1);
+    assert.equal(offers[0].externalId, 'MLB4555189589');
+    assert.equal(offers[0].currentPrice, 78.9);
+    assert.equal(offers[0].originalPrice, 104.9);
+    assert.equal(offers[0].discountPercent, 24);
+    assert.equal(offers[0].freeShipping, true);
   });
 
   test('assina e normaliza ofertas rastreáveis da Shopee', () => {

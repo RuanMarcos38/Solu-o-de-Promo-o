@@ -21,6 +21,7 @@ export type OfferFilters = {
   maxPrice?: number;
   minScore?: number;
   limit?: number;
+  includeUntracked?: boolean;
 };
 
 function toApiOffer(offer: any) {
@@ -119,7 +120,9 @@ export async function listOffers(
   filters: OfferFilters = {},
   pagination: { defaultLimit?: number; maxLimit?: number } = {}
 ) {
-  const where: any = { isActive: true, affiliateEligible: true, affiliateUrl: { not: null } };
+  const where: any = filters.includeUntracked
+    ? { isActive: true }
+    : { isActive: true, affiliateEligible: true, affiliateUrl: { not: null } };
   const marketplace = toMarketplace(filters.marketplace);
   if (marketplace) where.marketplace = marketplace;
   if (filters.keyword) where.normalizedTitle = { contains: filters.keyword.toLowerCase(), mode: 'insensitive' };
