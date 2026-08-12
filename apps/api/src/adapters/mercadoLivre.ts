@@ -20,6 +20,10 @@ type MercadoLivreResponse = {
   results?: MercadoLivreItem[];
 };
 
+type MercadoLivreDomainDiscoveryItem = {
+  category_id?: string;
+};
+
 type MercadoLivreOfferPageItem = {
   card?: {
     metadata?: { id?: string; product_id?: string; url?: string; url_fragments?: string; url_params?: string };
@@ -180,6 +184,15 @@ function normalizeMercadoLivreOfferPageItem(item: MercadoLivreOfferPageItem): Om
   };
 }
 
+function offerMatchesKeyword(offer: Omit<NormalizedOffer, 'score'>, keyword: string) {
+  const terms = normalizeTitle(keyword)
+    .split(' ')
+    .filter((term) => term.length > 2);
+  if (terms.length === 0) return true;
+  const normalizedTitle = normalizeTitle(offer.title);
+  return terms.every((term) => normalizedTitle.includes(term));
+}
+
 export function parseMercadoLivreOfferPage(html: string) {
   const data = extractNextData(html);
   const items = data?.props?.pageProps?.data?.items ?? data?.appProps?.pageProps?.data?.items ?? data?.pageProps?.data?.items ?? [];
@@ -222,8 +235,30 @@ async function resolveOffers(items: Array<Omit<NormalizedOffer, 'score'>>) {
   }));
 }
 
+async function discoverMercadoLivreCategory(keyword: string) {
+  const params = new URLSearchParams({ limit: '1', q: keyword });
+  const url = `https://api.mercadolibre.com/sites/${encodeURIComponent(config.mercadoLivreSiteId)}/domain_discovery/search?${params.toString()}`;
+
+  try {
+    const response = await fetchExternal(url, {
+      headers: {
+        Accept: 'application/json',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+        'User-Agent': 'ZeniteOfertas/1.0 (+https://ofertas.r2rmarketingdigital.com.br)'
+      }
+    });
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as MercadoLivreDomainDiscoveryItem[];
+    return data.find((item) => item.category_id)?.category_id;
+  } catch {
+    return undefined;
+  }
+}
+
 async function searchMercadoLivreOfferPage(input: SearchInput) {
   const params = new URLSearchParams({ search: input.keyword });
+  const categoryId = await discoverMercadoLivreCategory(input.keyword);
+  if (categoryId) params.set('category', categoryId);
   const url = `https://www.mercadolivre.com.br/ofertas?${params.toString()}`;
   const response = await fetchExternal(url, {
     headers: {
@@ -235,8 +270,10 @@ async function searchMercadoLivreOfferPage(input: SearchInput) {
 
   if (!response.ok) throw new Error(`Mercado Livre ofertas retornou HTTP ${response.status}`);
   const offers = parseMercadoLivreOfferPage(await response.text());
-  if (offers.length === 0) throw new Error('Mercado Livre não retornou produtos legíveis para esta busca');
-  return resolveOffers(offers.slice(0, Math.min(Math.max(input.limit ?? config.maxResultsPerSource, 1), 48)));
+  const matchedOffers = offers.filter((offer) => offerMatchesKeyword(offer, input.keyword));
+  const relevantOffers = matchedOffers.length > 0 ? matchedOffers : categoryId ? offers : [];
+  if (relevantOffers.length === 0) throw new Error('Mercado Livre não retornou produtos legíveis para esta busca');
+  return resolveOffers(relevantOffers.slice(0, Math.min(Math.max(input.limit ?? config.maxResultsPerSource, 1), 48)));
 }
 
 export const mercadoLivreAdapter: MarketplaceAdapter = {
