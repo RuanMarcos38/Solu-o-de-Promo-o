@@ -81,6 +81,7 @@ export function App() {
   const [marketplace, setMarketplace] = useState('mercadolivre');
   const [minDiscount, setMinDiscount] = useState('10');
   const [loading, setLoading] = useState(false);
+  const [collecting, setCollecting] = useState(false);
   const [sources, setSources] = useState<Source[]>([]);
   const [alerts, setAlerts] = useState<AlertRule[]>([]);
   const [channels, setChannels] = useState<DispatchChannel[]>([]);
@@ -174,17 +175,25 @@ export function App() {
     if (keyword) params.set('keyword', keyword);
     if (marketplace) params.set('marketplace', marketplace);
     if (minDiscount) params.set('minDiscount', minDiscount);
-    const [offersResponse, statsResponse, marketplacesResponse] = await Promise.all([
-      fetch(`${apiUrl}/api/v1/offers?${params.toString()}`),
-      fetch(`${apiUrl}/api/v1/offers/stats`),
-      fetch(`${apiUrl}/api/v1/marketplaces`)
-    ]);
-    const offersData = await offersResponse.json();
-    const statsData = await statsResponse.json();
-    const marketplacesData = await marketplacesResponse.json();
-    setOffers(offersData.offers ?? []);
-    setStats(statsData);
-    setMarketplaceStatuses(marketplacesData.marketplaces ?? []);
+    try {
+      const [offersResponse, statsResponse, marketplacesResponse] = await Promise.all([
+        fetch(`${apiUrl}/api/v1/offers?${params.toString()}`),
+        fetch(`${apiUrl}/api/v1/offers/stats`),
+        fetch(`${apiUrl}/api/v1/marketplaces`)
+      ]);
+      if (!offersResponse.ok || !statsResponse.ok || !marketplacesResponse.ok) throw new Error(apiUnavailableMessage);
+      const offersData = await offersResponse.json();
+      const statsData = await statsResponse.json();
+      const marketplacesData = await marketplacesResponse.json();
+      const nextOffers = offersData.offers ?? [];
+      setOffers(nextOffers);
+      setStats(statsData);
+      setMarketplaceStatuses(marketplacesData.marketplaces ?? []);
+      return nextOffers as Offer[];
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : apiUnavailableMessage);
+      return [];
+    }
   }
 
   async function loadAdminData() {
@@ -224,16 +233,39 @@ export function App() {
   }
 
   async function collectNow() {
-    setLoading(true);
+    setCollecting(true);
     setStatusMessage('');
     try {
-      await apiFetch('/collect/enqueue', { method: 'POST', body: JSON.stringify({ keyword, marketplace }) });
-      setStatusMessage('Coleta enviada para a fila.');
-      await loadAdminData();
+      const response = await apiFetch('/collect/run', { method: 'POST', body: JSON.stringify({ keyword, marketplace }) });
+      const result = await response.json() as { approved?: Offer[]; approvedCount?: number; errors?: Array<{ error: string }> };
+      const immediateOffers = result.approved ?? [];
+
+      if (immediateOffers.length > 0) {
+        setOffers((current) => {
+          const seen = new Set<string>();
+          return [...immediateOffers, ...current].filter((offer) => {
+            const key = `${offer.marketplace}-${offer.externalId}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          }).slice(0, 100);
+        });
+      } else {
+        await loadData();
+      }
+
+      const [visibleOffers] = await Promise.all([loadData(), loadAdminData()]);
+      const visibleCount = visibleOffers.length || immediateOffers.length || result.approvedCount || 0;
+      const errorHint = result.errors?.length ? ` ${result.errors.map((item) => item.error).join(' ')}` : '';
+      setStatusMessage(
+        visibleCount > 0
+          ? `${visibleCount} oferta(s) exibidas agora.${errorHint}`
+          : `Nenhuma oferta aprovada encontrada para este filtro.${errorHint}`
+      );
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : 'Erro ao enfileirar coleta.');
+      setStatusMessage(error instanceof Error ? error.message : 'Erro ao buscar ofertas agora.');
     } finally {
-      setLoading(false);
+      setCollecting(false);
     }
   }
 
@@ -388,10 +420,39 @@ export function App() {
           </select>
           <input value={minDiscount} onChange={(event) => setMinDiscount(event.target.value)} placeholder="Desconto mínimo" />
           <button onClick={loadData}>Filtrar</button>
-          {canEdit ? <button onClick={collectNow} disabled={loading}>{loading ? 'Enfileirando...' : 'Varrer agora'}</button> : null}
+          {canEdit ? <button className="primary-action" onClick={collectNow} disabled={collecting}>{collecting ? 'Buscando...' : 'Buscar e mostrar agora'}</button> : null}
           <button onClick={loadAdminData}>Atualizar operação</button>
         </div>
         {statusMessage ? <p className={`status-message${statusIsError ? ' status-error' : ''}`} role="status">{statusMessage}</p> : null}
+      </section>
+
+      <section className="results-heading">
+        <div>
+          <span className="eyebrow">Resultado imediato</span>
+          <h2>Ofertas encontradas</h2>
+        </div>
+        <strong>{offers.length}</strong>
+      </section>
+
+      <section className="offer-grid">
+        {offers.map((offer) => (
+          <article className="offer-card" key={`${offer.marketplace}-${offer.externalId}`}>
+            {offer.imageUrl ? <img src={offer.imageUrl} alt={offer.title} /> : null}
+            <div>
+              <span className="marketplace">{offer.marketplace} - Score {offer.score}</span>
+              <h2>{offer.title}</h2>
+              <strong>{money.format(offer.currentPrice)}</strong>
+              {offer.discountPercent ? <p>{offer.discountPercent}% OFF</p> : null}
+              <a href={offer.affiliateUrl} target="_blank" rel="noreferrer sponsored">Ver oferta afiliada</a>
+            </div>
+          </article>
+        ))}
+        {!offers.length ? (
+          <article className="empty-results">
+            <h2>Nenhuma oferta na tela ainda</h2>
+            <p>Use "Buscar e mostrar agora" para consultar o marketplace e carregar os resultados imediatamente.</p>
+          </article>
+        ) : null}
       </section>
 
       <section className="stats-grid">
@@ -530,20 +591,6 @@ export function App() {
         </section>
       ) : null}
 
-      <section className="offer-grid">
-        {offers.map((offer) => (
-          <article className="offer-card" key={`${offer.marketplace}-${offer.externalId}`}>
-            {offer.imageUrl ? <img src={offer.imageUrl} alt={offer.title} /> : null}
-            <div>
-              <span className="marketplace">{offer.marketplace} • Score {offer.score}</span>
-              <h2>{offer.title}</h2>
-              <strong>{money.format(offer.currentPrice)}</strong>
-              {offer.discountPercent ? <p>{offer.discountPercent}% OFF</p> : null}
-              <a href={offer.affiliateUrl} target="_blank" rel="noreferrer sponsored">Ver oferta afiliada</a>
-            </div>
-          </article>
-        ))}
-      </section>
     </main>
   );
 }
