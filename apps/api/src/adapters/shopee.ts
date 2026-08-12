@@ -106,10 +106,14 @@ export function normalizeShopeeNode(node: ShopeeNode): NormalizedOffer | null {
   return { ...base, score: calculateScore(base) };
 }
 
+function hasShopeeOfficialCredentials() {
+  return Boolean(config.shopeeAppId && config.shopeeSecret && config.shopeeEndpoint);
+}
+
 export const shopeeAdapter: MarketplaceAdapter = {
   name: 'shopee',
   async search(input: SearchInput): Promise<NormalizedOffer[]> {
-    if (!config.shopeeEnabled) throw new Error('Shopee Affiliate Open API está desabilitada');
+    if (!hasShopeeOfficialCredentials()) throw new Error('Shopee precisa de SHOPEE_APP_ID e SHOPEE_SECRET configurados no EasyPanel; a API publica da Shopee bloqueia busca de produtos sem autorizacao oficial.');
     if (!config.shopeeAppId || !config.shopeeSecret || !config.shopeeEndpoint) {
       throw new Error('Shopee Affiliate Open API sem app id, secret ou endpoint');
     }

@@ -34,6 +34,20 @@ type TokenResponse = { access_token?: string; expires_in?: number; token_type?: 
 
 let cachedToken: { value: string; expiresAt: number } | undefined;
 
+const desktopBrowserHeaders = {
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+  'Cache-Control': 'no-cache',
+  Pragma: 'no-cache',
+  'Upgrade-Insecure-Requests': '1',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+};
+
+const mobileBrowserHeaders = {
+  ...desktopBrowserHeaders,
+  'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36'
+};
+
 function decodeHtml(value: string) {
   return value
     .replace(/&amp;/g, '&')
@@ -144,6 +158,17 @@ export function amazonTokenEndpoint(version: string) {
   throw new Error(`Versão de credencial Amazon Creators API não suportada: ${version}`);
 }
 
+function cookieHeader(response: Response) {
+  const headers = response.headers as Headers & { getSetCookie?: () => string[] };
+  const setCookies = headers.getSetCookie?.() ?? [];
+  const fallback = response.headers.get('set-cookie');
+  return (setCookies.length > 0 ? setCookies : fallback ? [fallback] : [])
+    .flatMap((header) => header.split(/,(?=\s*[^;=]+=[^;]+;)/g))
+    .map((header) => header.split(';')[0]?.trim())
+    .filter(Boolean)
+    .join('; ');
+}
+
 function isTrackedAmazonUrl(rawUrl: string, partnerTag: string) {
   if (!isMarketplaceAffiliateUrl('amazon', rawUrl)) return false;
   try {
@@ -249,11 +274,56 @@ async function searchAmazonPublic(input: SearchInput) {
   return offers.slice(0, limit);
 }
 
+async function searchAmazonPublicResilient(input: SearchInput) {
+  const limit = Math.min(Math.max(input.limit ?? 10, 1), 24);
+  const host = config.amazonMarketplace.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const query = new URLSearchParams({ k: input.keyword }).toString();
+  const urls = [
+    `https://${host}/s?${new URLSearchParams({ i: 'aps', k: input.keyword, ref: 'nb_sb_noss' }).toString()}`,
+    `https://${host}/s?${query}`,
+    `https://${host}/gp/aw/s?${query}`
+  ];
+  const failures: string[] = [];
+
+  for (const headers of [desktopBrowserHeaders, mobileBrowserHeaders]) {
+    let cookies = '';
+    try {
+      const home = await fetchExternal(`https://${host}/`, { headers });
+      cookies = cookieHeader(home);
+    } catch {
+      cookies = '';
+    }
+
+    for (const url of urls) {
+      const response = await fetchExternal(url, {
+        headers: {
+          ...headers,
+          Referer: `https://${host}/`,
+          ...(cookies ? { Cookie: cookies } : {})
+        }
+      });
+
+      if (!response.ok) {
+        failures.push(`HTTP ${response.status}`);
+        continue;
+      }
+
+      const html = await response.text();
+      const offers = parseAmazonPublicSearch(html, config.amazonPartnerTag);
+      if (offers.length > 0) return offers.slice(0, limit);
+      failures.push('sem produtos legiveis');
+    }
+  }
+
+  const reason = [...new Set(failures)].join(', ') || 'bloqueio da vitrine publica';
+  throw new Error(`Amazon Brasil nao liberou a busca publica (${reason}). Configure Amazon Creators API para busca oficial.`);
+}
+
 export const amazonAdapter: MarketplaceAdapter = {
   name: 'amazon',
   async search(input: SearchInput): Promise<NormalizedOffer[]> {
     if (!config.amazonEnabled || !config.amazonCredentialId || !config.amazonCredentialSecret || !config.amazonPartnerTag) {
-      return searchAmazonPublic(input);
+      return searchAmazonPublicResilient(input);
     }
 
     const accessToken = await fetchAccessToken();

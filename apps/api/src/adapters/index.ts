@@ -39,11 +39,11 @@ export function getMarketplaceStatuses() {
     {
       marketplace: 'shopee',
       enabled: true,
-      configured: Boolean(config.shopeeEnabled && config.shopeeAppId && config.shopeeSecret),
-      affiliateLinks: Boolean(config.shopeeEnabled && config.shopeeAppId && config.shopeeSecret),
-      detail: config.shopeeEnabled && config.shopeeAppId && config.shopeeSecret
+      configured: Boolean(config.shopeeAppId && config.shopeeSecret && config.shopeeEndpoint),
+      affiliateLinks: Boolean(config.shopeeAppId && config.shopeeSecret && config.shopeeEndpoint),
+      detail: config.shopeeAppId && config.shopeeSecret && config.shopeeEndpoint
         ? 'Shopee Affiliate Open API configurada e pronta para retornar offerLink rastreável.'
-        : 'Conector preparado. Cadastre SHOPEE_APP_ID e SHOPEE_SECRET no EasyPanel para ativar a busca oficial.'
+        : 'Shopee exige SHOPEE_APP_ID e SHOPEE_SECRET no EasyPanel; a API publica bloqueia busca de produtos sem autorizacao oficial.'
     }
   ];
 }
