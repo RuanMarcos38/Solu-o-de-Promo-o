@@ -63,7 +63,8 @@ type OperationsSnapshot = {
   };
 };
 
-const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3333';
+const productionApiUrl = 'https://api-ofertas.r2rmarketingdigital.com.br';
+const apiUrl = (import.meta.env.VITE_API_URL ?? productionApiUrl).replace(/\/$/, '');
 const dateTime = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium' });
 
 function queueLoad(counts: QueueCounts) {

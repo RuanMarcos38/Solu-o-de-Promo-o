@@ -60,7 +60,8 @@ type PlatformSettingsRecord = {
 
 type Language = 'pt-BR' | 'en-US' | 'es-ES';
 
-const apiUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:3333').replace(/\/$/, '');
+const productionApiUrl = 'https://api-ofertas.r2rmarketingdigital.com.br';
+const apiUrl = (import.meta.env.VITE_API_URL ?? productionApiUrl).replace(/\/$/, '');
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const apiUnavailableMessage = 'A API está indisponível no momento. Verifique o serviço api no EasyPanel e tente novamente.';
@@ -285,6 +286,22 @@ export function App() {
     }
   }
 
+  async function loadPublicMeta() {
+    try {
+      const [statsResponse, marketplacesResponse] = await Promise.all([
+        fetch(`${apiUrl}/api/v1/offers/stats`),
+        fetch(`${apiUrl}/api/v1/marketplaces`)
+      ]);
+      if (!statsResponse.ok || !marketplacesResponse.ok) throw new Error(apiUnavailableMessage);
+      const statsData = await statsResponse.json();
+      const marketplacesData = await marketplacesResponse.json();
+      setStats(statsData);
+      setMarketplaceStatuses(marketplacesData.marketplaces ?? []);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : apiUnavailableMessage);
+    }
+  }
+
   async function loadAdminData() {
     if (!token || !currentUser) return;
 
@@ -336,6 +353,7 @@ export function App() {
       }
       const result = await response.json() as { offers?: Offer[]; approved?: Offer[]; approvedCount?: number; foundCount?: number; errors?: Array<{ error: string }> };
       const immediateOffers = result.offers ?? result.approved ?? [];
+      let visibleCount = immediateOffers.length || result.foundCount || result.approvedCount || 0;
 
       if (immediateOffers.length > 0) {
         setOffers((current) => {
@@ -347,12 +365,13 @@ export function App() {
             return true;
           }).slice(0, 100);
         });
+        await Promise.all([loadPublicMeta(), loadAdminData().catch(() => undefined)]);
       } else {
-        await loadData();
+        const visibleOffers = await loadData();
+        await loadAdminData().catch(() => undefined);
+        visibleCount = visibleOffers.length || visibleCount;
       }
 
-      const [visibleOffers] = await Promise.all([loadData(), loadAdminData()]);
-      const visibleCount = visibleOffers.length || immediateOffers.length || result.foundCount || result.approvedCount || 0;
       const errorHint = result.errors?.length ? ` ${result.errors.map((item) => item.error).join(' ')}` : '';
       setStatusMessage(
         visibleCount > 0

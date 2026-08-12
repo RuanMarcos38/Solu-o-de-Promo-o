@@ -3,7 +3,14 @@ import { dispatchOffers } from './dispatch.js';
 import { upsertOffers } from './offerStore.js';
 import { getPlatformSettings } from './runtimeSettings.js';
 import { getCollectionTargets } from './sources.js';
-import type { MarketplaceName } from './types.js';
+import type { MarketplaceName, NormalizedOffer } from './types.js';
+
+function toImmediateOffer(item: NormalizedOffer) {
+  return {
+    ...item,
+    id: `${item.marketplace}-${item.externalId}`
+  };
+}
 
 export async function runCollection(options?: { keyword?: string; marketplace?: MarketplaceName }) {
   const { settings } = await getPlatformSettings();
@@ -25,7 +32,7 @@ export async function runCollection(options?: { keyword?: string; marketplace?: 
         ? { ...settings.qualification, minDiscountPercent: 0, minOpportunityScore: 0, requireVerifiedAffiliateLinks: false }
         : settings.qualification;
       const saved = await upsertOffers(found, criteria);
-      collected.push(...saved);
+      collected.push(...(options?.keyword ? found.map(toImmediateOffer) : saved));
       approved.push(...saved.filter((offer) => offer.affiliateEligible && offer.affiliateUrl));
     } catch (error) {
       errors.push({ marketplace: adapter.name, keyword: target.keyword, error: error instanceof Error ? error.message : 'Erro desconhecido' });
