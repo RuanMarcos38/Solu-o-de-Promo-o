@@ -37,7 +37,7 @@ curl --fail --silent --show-error http://127.0.0.1:3333/openapi.json \
     process.stdin.on("data", (chunk) => { body += chunk; });
     process.stdin.on("end", () => {
       const document = JSON.parse(body);
-      const required = ["/api/v1/health", "/api/v1/offers", "/api/v1/offers/stats", "/api/v1/marketplaces"];
+      const required = ["/api/v1/health", "/api/v1/offers", "/api/v1/offers/stats", "/api/v1/marketplaces", "/api/v1/collect/run"];
       for (const route of required) {
         if (!document.paths?.[route]) throw new Error(`OpenAPI sem ${route}`);
       }

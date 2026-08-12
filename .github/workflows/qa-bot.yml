@@ -1,0 +1,128 @@
+name: QA Bot
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      production_smoke:
+        description: Rodar smoke nos dominios publicados
+        required: true
+        type: boolean
+        default: true
+      strict_marketplaces:
+        description: Falhar Amazon/Shopee quando credenciais oficiais nao existirem ou o marketplace bloquear
+        required: true
+        type: boolean
+        default: false
+  schedule:
+    - cron: '17 10 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-bot-${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  code-qa:
+    name: Codigo, testes e builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: promo
+          POSTGRES_PASSWORD: promo
+          POSTGRES_DB: promo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U promo -d promo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://promo:promo@localhost:5432/promo_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test-jwt-secret-with-at-least-32-characters
+      JWT_EXPIRES_IN: 15m
+      JWT_ISSUER: promotion-radar-api-test
+      JWT_AUDIENCE: promotion-radar-web-test
+      FRONTEND_ORIGINS: http://localhost:5173
+      BOOTSTRAP_ADMIN_ENABLED: 'true'
+      ADMIN_NAME: Administrador de Teste
+      ADMIN_EMAIL: admin@test.local
+      ADMIN_PASSWORD: TestAdminPassword123!
+      CHANNEL_CONFIG_ENCRYPTION_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+      ALLOW_INSECURE_OUTBOUND_HTTP: 'false'
+      COLLECT_INTERVAL_SECONDS: '3600'
+      VITE_API_URL: https://api-ofertas.r2rmarketingdigital.com.br
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci --loglevel=error
+
+      - name: Run QA bot
+        run: node scripts/qa-bot.mjs --mode ci --strict
+
+      - name: Upload QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-bot-code-report
+          path: qa-reports/latest.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  production-qa:
+    name: Smoke publico
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.production_smoke)
+    env:
+      API_URL: https://api-ofertas.r2rmarketingdigital.com.br
+      APP_URL: https://ofertas.r2rmarketingdigital.com.br
+      STRICT_MARKETPLACES: ${{ inputs.strict_marketplaces && 'true' || 'false' }}
+      PROBE_OPTIONAL_MARKETPLACES: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run public smoke bot
+        run: node scripts/smoke-public.mjs
+
+      - name: Upload public smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-bot-public-smoke-report
+          path: qa-reports/public-smoke.json
+          if-no-files-found: warn
+          retention-days: 14

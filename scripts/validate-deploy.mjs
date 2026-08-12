@@ -31,8 +31,8 @@ if (existsSync('compose.production.yml')) {
   for (const service of ['postgres:', 'redis:', 'api:', 'worker:', 'web:', 'prometheus:', 'alertmanager:', 'grafana:', 'caddy:']) {
     expect(compose.includes(service), `Serviço ausente no Compose de produção: ${service}`);
   }
-  expect(compose.includes('backend:\n    internal: true'), 'A rede backend precisa ser interna.');
-  expect(compose.includes('observability:\n    internal: true'), 'A rede observability precisa ser interna.');
+  expect(/backend:\r?\n\s+internal:\s+true/.test(compose), 'A rede backend precisa ser interna.');
+  expect(/observability:\r?\n\s+internal:\s+true/.test(compose), 'A rede observability precisa ser interna.');
   expect(compose.includes('"80:80"') && compose.includes('"443:443"'), 'Caddy precisa publicar 80 e 443.');
   expect(!compose.includes('3333:3333'), 'A API não pode publicar a porta 3333 em produção.');
   expect(!compose.includes('5432:5432'), 'PostgreSQL não pode publicar a porta 5432 em produção.');
