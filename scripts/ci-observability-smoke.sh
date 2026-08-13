@@ -56,7 +56,7 @@ wait_url http://localhost:9464/health 30
 curl -fsS -H "Authorization: Bearer ${METRICS_TOKEN}" http://localhost:9464/metrics > worker-metrics.txt
 grep -q 'promotion_radar_queue_depth' worker-metrics.txt
 grep -q 'promotion_radar_service_info' worker-metrics.txt
-node scripts/smoke-public.mjs
+API_URL=http://127.0.0.1:3333 CHECK_FRONTEND_BUNDLE=false node scripts/smoke-public.mjs
 
 docker compose --profile observability up -d alertmanager prometheus grafana
 wait_url http://localhost:9093/-/ready

@@ -7,6 +7,7 @@ const apiUrl = (process.env.API_URL ?? 'https://api-ofertas.r2rmarketingdigital.
 const appUrl = (process.env.APP_URL ?? 'https://ofertas.r2rmarketingdigital.com.br').replace(/\/$/, '');
 const strictMarketplaces = process.env.STRICT_MARKETPLACES === 'true';
 const probeOptionalMarketplaces = process.env.PROBE_OPTIONAL_MARKETPLACES === 'true';
+const checkFrontendBundle = process.env.CHECK_FRONTEND_BUNDLE !== 'false';
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 20000);
 const marketplaceTimeoutMs = Number(process.env.MARKETPLACE_SMOKE_TIMEOUT_MS ?? 130000);
 
@@ -114,7 +115,9 @@ async function probeMarketplace(marketplace, keyword, required) {
   }
 }
 
-await checkAppBundle();
+if (checkFrontendBundle) {
+  await checkAppBundle();
+}
 await probeMarketplace('mercadolivre', process.env.MERCADO_LIVRE_SMOKE_KEYWORD ?? 'fone de ouvido', true);
 
 if (probeOptionalMarketplaces || strictMarketplaces) {
