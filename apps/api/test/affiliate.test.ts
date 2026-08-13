@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { isMarketplaceAffiliateUrl, resolveAffiliateLink } from '../src/affiliate.js';
+import { createInternalAffiliateLink, isMarketplaceAffiliateUrl, resolveAffiliateLink } from '../src/affiliate.js';
 
 describe('validação de links afiliados', () => {
   test('aceita somente HTTPS e hosts pertencentes ao marketplace', () => {
@@ -23,5 +23,14 @@ describe('validação de links afiliados', () => {
     assert.equal(result.affiliateProvider, 'amazon-partner-tag');
     assert.equal(result.affiliateUrl, 'https://www.amazon.com.br/dp/B000TEST?psc=1&tag=r2r-20');
     assert.ok(result.affiliateVerifiedAt);
+  });
+
+  test('gera link interno rastreavel da plataforma', () => {
+    assert.equal(
+      createInternalAffiliateLink('https://api-ofertas.r2rmarketingdigital.com.br/base?x=1', 'offer-1'),
+      'https://api-ofertas.r2rmarketingdigital.com.br/r/offer-1'
+    );
+    assert.equal(createInternalAffiliateLink('ftp://api-ofertas.r2rmarketingdigital.com.br', 'offer-1'), undefined);
+    assert.equal(createInternalAffiliateLink('url-invalida', 'offer-1'), undefined);
   });
 });

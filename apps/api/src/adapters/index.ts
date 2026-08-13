@@ -16,6 +16,7 @@ export function getAdapter(name: MarketplaceName) {
 
 export function getMarketplaceStatuses() {
   const mercadoLivreAffiliateLinks = Boolean(config.affiliateResolverUrl);
+  const internalAffiliateLinks = true;
   const amazonOfficialReady = Boolean(
     config.amazonEnabled
     && config.amazonCredentialId
@@ -28,14 +29,14 @@ export function getMarketplaceStatuses() {
       marketplace: 'mercadolivre',
       enabled: true,
       configured: true,
-      affiliateLinks: mercadoLivreAffiliateLinks,
+      affiliateLinks: mercadoLivreAffiliateLinks || internalAffiliateLinks,
       detail: config.mercadoLivreAccessToken
         ? mercadoLivreAffiliateLinks
           ? 'Busca oficial e resolvedor autorizado configurados.'
-          : 'Busca oficial configurada. Cadastre o resolvedor autorizado para gerar links rastreaveis.'
+          : 'Busca oficial configurada. Links rastreaveis internos ativos; cadastre resolvedor autorizado para links oficiais.'
         : mercadoLivreAffiliateLinks
           ? 'Busca publica ativa e resolvedor autorizado configurado.'
-          : 'Busca publica ativa no Mercado Livre. MERCADO_LIVRE_ACCESS_TOKEN e resolvedor autorizado seguem opcionais para links rastreaveis.'
+          : 'Busca publica ativa no Mercado Livre. Links rastreaveis internos ativos; MERCADO_LIVRE_ACCESS_TOKEN e resolvedor autorizado seguem opcionais.'
     },
     {
       marketplace: 'amazon',
@@ -52,11 +53,11 @@ export function getMarketplaceStatuses() {
       marketplace: 'shopee',
       enabled: true,
       configured: hasShopeeOfficialCredentials() || hasShopeeApifyFallback(),
-      affiliateLinks: hasShopeeOfficialCredentials(),
+      affiliateLinks: hasShopeeOfficialCredentials() || internalAffiliateLinks,
       detail: hasShopeeOfficialCredentials()
         ? 'Shopee Affiliate Open API configurada e pronta para retornar offerLink rastreavel.'
         : hasShopeeApifyFallback()
-          ? 'Busca publica via Apify configurada para resultado imediato. Para offerLink rastreavel, configure Shopee Affiliate Open API.'
+          ? 'Busca publica via Apify configurada para resultado imediato. Links rastreaveis internos ativos; configure Shopee Affiliate Open API para offerLink oficial.'
           : 'Shopee precisa de APIFY_TOKEN no EasyPanel para busca publica via Apify, ou SHOPEE_APP_ID e SHOPEE_SECRET para links oficiais.'
     }
   ];

@@ -24,7 +24,7 @@ import { ensureDefaultSources } from './sources.js';
 import { decryptSensitiveConfig, encryptSensitiveConfig, summarizeSensitiveConfig } from './secrets.js';
 import { assertSafeOutboundUrl } from './http.js';
 import { getMarketplaceStatuses } from './adapters/index.js';
-import { resolveAffiliateLink } from './affiliate.js';
+import { createInternalAffiliateLink, resolveAffiliateLink } from './affiliate.js';
 import { buildOpenApiDocument } from './openApi.js';
 import type { MarketplaceName } from './types.js';
 import {
@@ -193,6 +193,19 @@ async function findOfferByRouteId(rawId: string) {
       }
     }
   });
+}
+
+function firstRequestHeader(value: unknown) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  if (typeof rawValue !== 'string') return undefined;
+  return rawValue.split(',')[0]?.trim() || undefined;
+}
+
+function getRequestOrigin(request: { headers: Record<string, unknown> }) {
+  const protocol = firstRequestHeader(request.headers['x-forwarded-proto']) || (config.isProduction ? 'https' : 'http');
+  const host = firstRequestHeader(request.headers['x-forwarded-host']) || firstRequestHeader(request.headers.host);
+  if (!/^https?$/i.test(protocol) || !host || !/^[a-z0-9.-]+(?::\d+)?$/i.test(host)) return undefined;
+  return `${protocol.toLowerCase()}://${host}`;
 }
 
 async function validateConfiguredUrl(value: unknown) {
@@ -448,20 +461,42 @@ export async function createApp(options: CreateAppOptions = {}) {
     return { history: await getOfferHistory(params.id) };
   });
 
+  app.get('/r/:id', async (request, reply) => {
+    const params = idParamsSchema.parse(request.params);
+    const offer = await findOfferByRouteId(params.id);
+    if (!offer || !offer.isActive) throw Object.assign(new Error('Oferta nao encontrada'), { statusCode: 404 });
+
+    const destination = offer.affiliateProvider === 'zenite-tracking' || !offer.affiliateUrl
+      ? offer.productUrl
+      : offer.affiliateUrl;
+
+    return reply.status(302).header('Location', destination).send();
+  });
+
   app.post('/offers/:id/affiliate', async (request) => {
     await requireEditor(request);
     const params = idParamsSchema.parse(request.params);
     const offer = await findOfferByRouteId(params.id);
     if (!offer) throw Object.assign(new Error('Oferta nÃ£o encontrada'), { statusCode: 404 });
 
-    const affiliate = await resolveAffiliateLink({
+    let affiliate = await resolveAffiliateLink({
       marketplace: offerMarketplaceName(offer.marketplace),
       externalId: offer.externalId,
       productUrl: offer.productUrl
     });
 
     if (!affiliate.affiliateEligible || !affiliate.affiliateUrl) {
-      throw Object.assign(new Error('Marketplace ainda nÃ£o possui afiliaÃ§Ã£o configurada para esta oferta'), { statusCode: 400 });
+      const internalAffiliateUrl = createInternalAffiliateLink(getRequestOrigin(request) ?? '', offer.id);
+      if (internalAffiliateUrl) {
+        affiliate = {
+          affiliateEligible: true,
+          affiliateUrl: internalAffiliateUrl,
+          affiliateProvider: 'zenite-tracking',
+          affiliateVerifiedAt: new Date()
+        };
+      } else {
+        throw Object.assign(new Error('Nao foi possivel gerar link rastreavel para esta oferta'), { statusCode: 400 });
+      }
     }
 
     const saved = await prisma.offer.update({

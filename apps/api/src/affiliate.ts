@@ -43,6 +43,19 @@ function createAmazonAffiliateLink(productUrl: string) {
   }
 }
 
+export function createInternalAffiliateLink(origin: string, offerId: string) {
+  try {
+    const parsed = new URL(origin);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return undefined;
+    parsed.pathname = `/r/${offerId}`;
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function isMarketplaceAffiliateUrl(marketplace: MarketplaceName, rawUrl: string) {
   try {
     const parsed = new URL(rawUrl);
