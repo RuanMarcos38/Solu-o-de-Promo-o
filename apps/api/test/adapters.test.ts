@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { amazonPublicKeywordVariants, amazonTokenEndpoint, normalizeAmazonItem, normalizeAmazonPublicBlock } from '../src/adapters/amazon.js';
 import { normalizeMercadoLivreItem, parseMercadoLivreOfferPage } from '../src/adapters/mercadoLivre.js';
-import { createShopeeSignature, normalizeShopeeNode } from '../src/adapters/shopee.js';
+import { buildShopeeApifyInput, createShopeeSignature, normalizeShopeeApifyItem, normalizeShopeeNode } from '../src/adapters/shopee.js';
 
 describe('adaptadores de marketplaces', () => {
   test('normaliza Mercado Livre sem inventar link afiliado', () => {
@@ -115,5 +115,36 @@ describe('adaptadores de marketplaces', () => {
     assert.ok(offer);
     assert.equal(offer.affiliateEligible, true);
     assert.equal(offer.currentPrice, 299.9);
+  });
+
+  test('normaliza resultado publico da Shopee via Apify sem inventar afiliado', () => {
+    const actorInput = buildShopeeApifyInput({ keyword: 'iphone', limit: 10, maxPrice: 2000 });
+    assert.equal(actorInput.country, 'br');
+    assert.equal(actorInput.mode, 'keyword');
+    assert.equal(actorInput.keyword, 'iphone');
+    assert.equal(actorInput.maxProducts, 10);
+    assert.equal(actorInput.fetchDetail, false);
+    assert.equal(actorInput.maxPrice, 2000);
+
+    const offer = normalizeShopeeApifyItem({
+      itemId: 987,
+      shopId: 654,
+      title: 'Fone Bluetooth',
+      url: 'https://shopee.com.br/Fone-Bluetooth-i.654.987',
+      price: 89.9,
+      originalPrice: 129.9,
+      image: 'https://down-br.img.susercontent.com/file/teste',
+      rating: 4.8,
+      shopName: 'Loja Teste',
+      freeShipping: true
+    });
+
+    assert.ok(offer);
+    assert.equal(offer.marketplace, 'shopee');
+    assert.equal(offer.currentPrice, 89.9);
+    assert.equal(offer.originalPrice, 129.9);
+    assert.equal(offer.discountPercent, 30.79);
+    assert.equal(offer.affiliateEligible, false);
+    assert.equal(offer.freeShipping, true);
   });
 });

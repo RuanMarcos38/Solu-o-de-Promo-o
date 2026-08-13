@@ -1,6 +1,6 @@
 import { mercadoLivreAdapter } from './mercadoLivre.js';
 import { amazonAdapter } from './amazon.js';
-import { shopeeAdapter } from './shopee.js';
+import { hasShopeeApifyFallback, hasShopeeOfficialCredentials, shopeeAdapter } from './shopee.js';
 import type { MarketplaceAdapter, MarketplaceName } from '../types.js';
 import { config } from '../config.js';
 
@@ -24,7 +24,7 @@ export function getMarketplaceStatuses() {
       detail: config.mercadoLivreAccessToken
         ? config.affiliateResolverUrl
           ? 'Busca oficial e resolvedor autorizado configurados.'
-          : 'Busca oficial configurada. Cadastre o resolvedor autorizado para gerar links rastreáveis.'
+          : 'Busca oficial configurada. Cadastre o resolvedor autorizado para gerar links rastreaveis.'
         : 'Conector ativo para busca. Cadastre MERCADO_LIVRE_ACCESS_TOKEN no EasyPanel para reduzir bloqueios da API oficial.'
     },
     {
@@ -34,16 +34,18 @@ export function getMarketplaceStatuses() {
       affiliateLinks: Boolean(config.amazonPartnerTag),
       detail: config.amazonEnabled && config.amazonCredentialId && config.amazonCredentialSecret && config.amazonPartnerTag
         ? 'Amazon Creators API configurada com OAuth 2.0 e Partner Tag.'
-        : 'Busca pública de exibição ativa. Para links rastreáveis, configure Amazon Creators API e AMAZON_PARTNER_TAG.'
+        : 'Busca publica de exibicao ativa. Para links rastreaveis, configure Amazon Creators API e AMAZON_PARTNER_TAG.'
     },
     {
       marketplace: 'shopee',
       enabled: true,
-      configured: Boolean(config.shopeeAppId && config.shopeeSecret && config.shopeeEndpoint),
-      affiliateLinks: Boolean(config.shopeeAppId && config.shopeeSecret && config.shopeeEndpoint),
-      detail: config.shopeeAppId && config.shopeeSecret && config.shopeeEndpoint
-        ? 'Shopee Affiliate Open API configurada e pronta para retornar offerLink rastreável.'
-        : 'Shopee exige SHOPEE_APP_ID e SHOPEE_SECRET no EasyPanel; a API publica bloqueia busca de produtos sem autorizacao oficial.'
+      configured: hasShopeeOfficialCredentials() || hasShopeeApifyFallback(),
+      affiliateLinks: hasShopeeOfficialCredentials(),
+      detail: hasShopeeOfficialCredentials()
+        ? 'Shopee Affiliate Open API configurada e pronta para retornar offerLink rastreavel.'
+        : hasShopeeApifyFallback()
+          ? 'Busca publica via Apify configurada para resultado imediato. Para offerLink rastreavel, configure Shopee Affiliate Open API.'
+          : 'Shopee precisa de APIFY_TOKEN no EasyPanel para busca publica via Apify, ou SHOPEE_APP_ID e SHOPEE_SECRET para links oficiais.'
     }
   ];
 }
