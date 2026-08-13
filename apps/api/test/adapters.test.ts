@@ -15,6 +15,15 @@ describe('adaptadores de marketplaces', () => {
     assert.match(mercadoLivre.detail, /Busca publica ativa|Busca oficial/);
   });
 
+  test('marca Amazon como pronta quando a busca publica esta ativa', () => {
+    const amazon = getMarketplaceStatuses().find((status) => status.marketplace === 'amazon');
+
+    assert.ok(amazon);
+    assert.equal(amazon.enabled, true);
+    assert.equal(amazon.configured, true);
+    assert.match(amazon.detail, /Busca publica ativa|Amazon Creators API/);
+  });
+
   test('normaliza Mercado Livre sem inventar link afiliado', () => {
     const offer = normalizeMercadoLivreItem({
       id: 'MLB123',

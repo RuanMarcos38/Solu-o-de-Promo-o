@@ -40,11 +40,13 @@ export function getMarketplaceStatuses() {
     {
       marketplace: 'amazon',
       enabled: true,
-      configured: amazonOfficialReady,
+      configured: true,
       affiliateLinks: Boolean(config.amazonPartnerTag),
       detail: amazonOfficialReady
         ? 'Amazon Creators API configurada com OAuth 2.0 e Partner Tag.'
-        : 'Credenciais oficiais da Amazon ausentes. Configure Amazon Creators API e AMAZON_PARTNER_TAG no EasyPanel para busca estavel e links rastreaveis.'
+        : config.amazonPartnerTag
+          ? 'Busca publica ativa na Amazon Brasil com Partner Tag. Configure Amazon Creators API para busca oficial mais estavel.'
+          : 'Busca publica ativa na Amazon Brasil para resultado imediato. Configure AMAZON_PARTNER_TAG e Creators API para links rastreaveis oficiais.'
     },
     {
       marketplace: 'shopee',
