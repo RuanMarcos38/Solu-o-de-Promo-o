@@ -17,6 +17,8 @@ import {
   type AlertForMatch,
   type OfferForDispatch
 } from './dispatchRules.js';
+import { toMarketplaceName } from './marketplace.js';
+import type { MarketplaceName } from './types.js';
 
 export type ChannelConfig = Record<string, any>;
 export type { AlertForMatch, OfferForDispatch } from './dispatchRules.js';
@@ -34,6 +36,12 @@ function jsonObject(value: Prisma.JsonValue | null): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function toDispatchMarketplace(value: Offer['marketplace']): MarketplaceName {
+  const marketplace = toMarketplaceName(String(value).toLowerCase().replace(/_/g, ''));
+  if (!marketplace) throw new Error('Marketplace invalido');
+  return marketplace;
+}
+
 function toDispatchOffer(offer: Offer): OfferForDispatch {
   return {
     id: offer.id,
@@ -43,7 +51,7 @@ function toDispatchOffer(offer: Offer): OfferForDispatch {
     productUrl: offer.productUrl,
     affiliateUrl: offer.affiliateUrl ?? undefined,
     affiliateEligible: offer.affiliateEligible,
-    marketplace: String(offer.marketplace).toLowerCase(),
+    marketplace: toDispatchMarketplace(offer.marketplace),
     score: offer.score
   };
 }
@@ -135,6 +143,20 @@ async function sendToChannel(
   else if (channel.type === 'evolution') await sendEvolutionWhatsapp(channelConfig, message);
   else if (channel.type === 'webhook') await sendWebhook(channelConfig, { message, offer, matchedAlerts: matchedAlertNames });
   else throw new Error(`Canal não suportado: ${channel.type}`);
+}
+
+export async function sendOfferToChannelNow(
+  channel: DispatchChannel,
+  offer: OfferForDispatch,
+  matchedAlertNames: string[] = []
+) {
+  const channelConfig = decryptChannelConfig(channel.config) as ChannelConfig;
+  const policy = checkMarketplaceChannelPolicy(offer, channel.type, channelConfig);
+  if (!policy.allowed) {
+    throw Object.assign(new Error(policy.reason), { statusCode: 400 });
+  }
+
+  await sendToChannel(channel, offer, matchedAlertNames);
 }
 
 async function findDispatchLog(idempotencyKey: string) {

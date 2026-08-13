@@ -15,6 +15,7 @@ process.env.ALLOW_INSECURE_OUTBOUND_HTTP ||= 'false';
 process.env.COLLECT_INTERVAL_SECONDS ||= '3600';
 process.env.MIN_DISCOUNT_PERCENT ||= '50';
 process.env.MIN_OPPORTUNITY_SCORE ||= '55';
+process.env.AMAZON_PARTNER_TAG ||= 'r2r-20';
 
 if (process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL.includes('promo_test')) {
   throw new Error('Os testes de integração só podem usar um banco com promo_test no nome');

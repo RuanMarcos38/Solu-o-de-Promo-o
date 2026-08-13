@@ -8,7 +8,7 @@ import { ensureAdminUser, hashPassword, login, requireAdmin, requireAuth, requir
 import { runCollection } from './collector.js';
 import { config } from './config.js';
 import { getOfferHistory, getStats, listOffers } from './offerStore.js';
-import { dispatchOffer } from './dispatch.js';
+import { dispatchOffer, sendOfferToChannelNow } from './dispatch.js';
 import { prisma } from './db.js';
 import {
   collectOffersQueue,
@@ -24,7 +24,9 @@ import { ensureDefaultSources } from './sources.js';
 import { decryptSensitiveConfig, encryptSensitiveConfig, summarizeSensitiveConfig } from './secrets.js';
 import { assertSafeOutboundUrl } from './http.js';
 import { getMarketplaceStatuses } from './adapters/index.js';
+import { resolveAffiliateLink } from './affiliate.js';
 import { buildOpenApiDocument } from './openApi.js';
+import type { MarketplaceName } from './types.js';
 import {
   getPlatformSettings,
   listPlatformSettingsAudit,
@@ -164,6 +166,33 @@ function toSafeSource(source: any) {
 function toSafeChannel(channel: any) {
   const { config: channelConfig, ...safeChannel } = channel;
   return { ...safeChannel, configSummary: safeConfigSummary(channelConfig) };
+}
+
+function offerMarketplaceName(value: unknown): MarketplaceName {
+  const marketplace = toMarketplaceName(String(value).toLowerCase().replace(/_/g, ''));
+  if (!marketplace) throw Object.assign(new Error('Marketplace invalido'), { statusCode: 400 });
+  return marketplace;
+}
+
+async function findOfferByRouteId(rawId: string) {
+  const directOffer = await prisma.offer.findUnique({ where: { id: rawId } });
+  if (directOffer) return directOffer;
+
+  const separatorIndex = rawId.indexOf('-');
+  if (separatorIndex < 1) return null;
+
+  const marketplace = toMarketplaceEnum(rawId.slice(0, separatorIndex));
+  const externalId = rawId.slice(separatorIndex + 1);
+  if (!marketplace || !externalId) return null;
+
+  return prisma.offer.findUnique({
+    where: {
+      marketplace_externalId: {
+        marketplace,
+        externalId
+      }
+    }
+  });
 }
 
 async function validateConfiguredUrl(value: unknown) {
@@ -417,6 +446,44 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.get('/offers/:id/history', async (request) => {
     const params = idParamsSchema.parse(request.params);
     return { history: await getOfferHistory(params.id) };
+  });
+
+  app.post('/offers/:id/affiliate', async (request) => {
+    await requireEditor(request);
+    const params = idParamsSchema.parse(request.params);
+    const offer = await findOfferByRouteId(params.id);
+    if (!offer) throw Object.assign(new Error('Oferta nÃ£o encontrada'), { statusCode: 404 });
+
+    const affiliate = await resolveAffiliateLink({
+      marketplace: offerMarketplaceName(offer.marketplace),
+      externalId: offer.externalId,
+      productUrl: offer.productUrl
+    });
+
+    if (!affiliate.affiliateEligible || !affiliate.affiliateUrl) {
+      throw Object.assign(new Error('Marketplace ainda nÃ£o possui afiliaÃ§Ã£o configurada para esta oferta'), { statusCode: 400 });
+    }
+
+    const saved = await prisma.offer.update({
+      where: { id: offer.id },
+      data: {
+        affiliateEligible: true,
+        affiliateUrl: affiliate.affiliateUrl,
+        affiliateProvider: affiliate.affiliateProvider,
+        affiliateVerifiedAt: affiliate.affiliateVerifiedAt
+      }
+    });
+
+    return {
+      offer: {
+        ...saved,
+        marketplace: offerMarketplaceName(saved.marketplace),
+        currentPrice: Number(saved.currentPrice),
+        originalPrice: saved.originalPrice === null ? undefined : Number(saved.originalPrice),
+        discountPercent: saved.discountPercent === null ? undefined : Number(saved.discountPercent),
+        rating: saved.rating === null ? undefined : Number(saved.rating)
+      }
+    };
   });
 
   app.post('/collect/run', async (request) => {
@@ -677,6 +744,50 @@ export async function createApp(options: CreateAppOptions = {}) {
     return { logs: logs.map((log) => ({ ...log, offer: log.offer ? { ...log.offer, currentPrice: Number(log.offer.currentPrice) } : null })) };
   });
 
+  app.post('/dispatch/whatsapp/:offerId', async (request) => {
+    await requireEditor(request);
+    const params = offerIdParamsSchema.parse(request.params);
+    const offer = await findOfferByRouteId(params.offerId);
+    if (!offer) throw Object.assign(new Error('Oferta nÃ£o encontrada'), { statusCode: 404 });
+
+    if (!offer.affiliateEligible || !offer.affiliateUrl) {
+      throw Object.assign(new Error('Afiliar o produto antes de enviar para WhatsApp'), { statusCode: 400 });
+    }
+
+    const channels = await prisma.dispatchChannel.findMany({
+      where: {
+        isActive: true,
+        type: { in: ['whatsapp', 'evolution'] }
+      }
+    });
+    if (channels.length === 0) throw Object.assign(new Error('Nenhum canal WhatsApp/Evolution ativo configurado'), { statusCode: 400 });
+
+    const dispatchOfferPayload = {
+      id: offer.id,
+      title: offer.title,
+      currentPrice: Number(offer.currentPrice),
+      discountPercent: offer.discountPercent ? Number(offer.discountPercent) : undefined,
+      productUrl: offer.productUrl,
+      affiliateUrl: offer.affiliateUrl ?? undefined,
+      affiliateEligible: offer.affiliateEligible,
+      marketplace: offerMarketplaceName(offer.marketplace),
+      score: offer.score
+    };
+
+    const sent: string[] = [];
+    const failed: Array<{ channel: string; error: string }> = [];
+    for (const channel of channels) {
+      try {
+        await sendOfferToChannelNow(channel, dispatchOfferPayload);
+        sent.push(channel.name);
+      } catch (error) {
+        failed.push({ channel: channel.name, error: error instanceof Error ? error.message : 'Erro desconhecido' });
+      }
+    }
+
+    return { sent, failed };
+  });
+
   app.post('/dispatch/test/:offerId', async (request) => {
     await requireAdmin(request);
     const params = offerIdParamsSchema.parse(request.params);
@@ -690,7 +801,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       productUrl: offer.productUrl,
       affiliateUrl: offer.affiliateUrl ?? undefined,
       affiliateEligible: offer.affiliateEligible,
-      marketplace: String(offer.marketplace).toLowerCase(),
+      marketplace: offerMarketplaceName(offer.marketplace),
       score: offer.score
     });
     return { status: result.queued > 0 ? 'queued' : result.skipped ? 'skipped' : 'not-queued', ...result };

@@ -85,6 +85,9 @@ const languages: Record<Language, { label: string; short: string; copy: Record<s
       emptyTitle: 'Nenhuma oferta na tela ainda',
       emptyText: 'Use "Buscar e mostrar agora" para consultar o marketplace e carregar os resultados imediatamente.',
       affiliateLink: 'Ver oferta afiliada',
+      affiliateProduct: 'Afiliar produto',
+      copyAffiliate: 'Copiar link',
+      sendWhatsapp: 'Enviar WhatsApp',
       productLink: 'Ver oferta',
       untracked: 'Link não rastreado',
       approved: 'Ofertas aprovadas',
@@ -111,6 +114,9 @@ const languages: Record<Language, { label: string; short: string; copy: Record<s
       emptyTitle: 'No offers on screen yet',
       emptyText: 'Use "Search and show now" to query the marketplace and load results immediately.',
       affiliateLink: 'View affiliate offer',
+      affiliateProduct: 'Create affiliate link',
+      copyAffiliate: 'Copy link',
+      sendWhatsapp: 'Send WhatsApp',
       productLink: 'View offer',
       untracked: 'Untracked link',
       approved: 'Approved offers',
@@ -137,6 +143,9 @@ const languages: Record<Language, { label: string; short: string; copy: Record<s
       emptyTitle: 'Todavía no hay ofertas en pantalla',
       emptyText: 'Usa "Buscar y mostrar ahora" para consultar el marketplace y cargar los resultados de inmediato.',
       affiliateLink: 'Ver oferta afiliada',
+      affiliateProduct: 'Afiliar producto',
+      copyAffiliate: 'Copiar enlace',
+      sendWhatsapp: 'Enviar WhatsApp',
       productLink: 'Ver oferta',
       untracked: 'Enlace no rastreado',
       approved: 'Ofertas aprobadas',
@@ -152,7 +161,7 @@ const languages: Record<Language, { label: string; short: string; copy: Record<s
 const channelExamples: Record<string, string> = {
   webhook: '{"url":"https://seu-webhook.com/ofertas"}',
   telegram: '{"botToken":"TOKEN_DO_BOT","chatId":"ID_DO_CANAL","audience":"public"}',
-  whatsapp: '{"url":"https://sua-api-whatsapp.com/send","token":"TOKEN","to":"5547999999999","audience":"private"}',
+  whatsapp: '{"provider":"evolution","baseUrl":"https://evolution.seudominio.com","apiKey":"SUA_API_KEY","instanceName":"minha-instancia","number":"5547999999999","audience":"private"}',
   evolution: '{"baseUrl":"https://evolution.seudominio.com","apiKey":"SUA_API_KEY","instanceName":"minha-instancia","number":"5547999999999","audience":"private"}'
 };
 
@@ -182,6 +191,7 @@ export function App() {
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState('VIEWER');
   const [statusMessage, setStatusMessage] = useState('');
+  const [offerActionId, setOfferActionId] = useState('');
   const [activeView, setActiveView] = useState<ViewKey>('dashboard');
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem('promo_language') as Language | null;
@@ -399,6 +409,55 @@ export function App() {
       setStatusMessage(error instanceof Error ? error.message : 'Erro ao buscar ofertas agora.');
     } finally {
       setCollecting(false);
+    }
+  }
+
+  function mergeOffer(nextOffer: Offer) {
+    setOffers((current) => current.map((offer) => {
+      const sameSavedOffer = offer.id === nextOffer.id;
+      const sameMarketplaceOffer = offer.marketplace === nextOffer.marketplace && offer.externalId === nextOffer.externalId;
+      return sameSavedOffer || sameMarketplaceOffer ? { ...offer, ...nextOffer } : offer;
+    }));
+  }
+
+  async function affiliateOffer(offer: Offer) {
+    if (!canEdit) return;
+    setOfferActionId(`affiliate-${offer.id}`);
+    setStatusMessage('');
+    try {
+      const response = await apiFetch(`/offers/${offer.id}/affiliate`, { method: 'POST' });
+      const data = await response.json() as { offer: Offer };
+      mergeOffer(data.offer);
+      setStatusMessage('Produto afiliado e link rastreável atualizado.');
+      await Promise.all([loadPublicMeta(), loadAdminData().catch(() => undefined)]);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Não foi possível afiliar este produto.');
+    } finally {
+      setOfferActionId('');
+    }
+  }
+
+  async function copyAffiliateLink(offer: Offer) {
+    const link = offer.affiliateUrl ?? offer.productUrl;
+    await navigator.clipboard.writeText(link);
+    setStatusMessage(offer.affiliateEligible ? 'Link afiliado copiado.' : 'Link comum copiado. Afiliar antes de automatizar envios.');
+  }
+
+  async function sendOfferToWhatsapp(offer: Offer) {
+    if (!canEdit) return;
+    setOfferActionId(`whatsapp-${offer.id}`);
+    setStatusMessage('');
+    try {
+      const response = await apiFetch(`/dispatch/whatsapp/${offer.id}`, { method: 'POST' });
+      const data = await response.json() as { sent: string[]; failed: Array<{ channel: string; error: string }> };
+      const sentText = data.sent.length ? `Enviado para ${data.sent.join(', ')}.` : 'Nenhum envio confirmado.';
+      const failText = data.failed.length ? ` Falhas: ${data.failed.map((item) => `${item.channel}: ${item.error}`).join('; ')}` : '';
+      setStatusMessage(`${sentText}${failText}`);
+      await loadAdminData().catch(() => undefined);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Não foi possível enviar para WhatsApp.');
+    } finally {
+      setOfferActionId('');
     }
   }
 
@@ -677,8 +736,18 @@ export function App() {
               <h2>{offer.title}</h2>
               <strong>{money.format(offer.currentPrice)}</strong>
               {offer.discountPercent ? <p>{offer.discountPercent}% OFF</p> : null}
-              {!offer.affiliateEligible ? <p className="tracking-note">{t.untracked}</p> : null}
-              <a href={offer.affiliateUrl ?? offer.productUrl} target="_blank" rel="noreferrer sponsored">{offer.affiliateEligible ? t.affiliateLink : t.productLink}</a>
+              <div className="affiliate-state">
+                <span className={offer.affiliateEligible ? 'state-ok' : 'state-warn'}>
+                  {offer.affiliateEligible ? 'Afiliado ativo' : t.untracked}
+                </span>
+                {offer.affiliateProvider ? <small>{offer.affiliateProvider}</small> : null}
+              </div>
+              <div className="offer-actions">
+                <a href={offer.affiliateUrl ?? offer.productUrl} target="_blank" rel="noreferrer sponsored">{offer.affiliateEligible ? t.affiliateLink : t.productLink}</a>
+                {canEdit ? <button type="button" onClick={() => affiliateOffer(offer)} disabled={offerActionId === `affiliate-${offer.id}`}>{offerActionId === `affiliate-${offer.id}` ? 'Afiliando...' : t.affiliateProduct}</button> : null}
+                <button type="button" className="ghost-button" onClick={() => copyAffiliateLink(offer)}>{t.copyAffiliate}</button>
+                {canEdit ? <button type="button" className="whatsapp-button" onClick={() => sendOfferToWhatsapp(offer)} disabled={!offer.affiliateEligible || offerActionId === `whatsapp-${offer.id}`}>{offerActionId === `whatsapp-${offer.id}` ? 'Enviando...' : t.sendWhatsapp}</button> : null}
+              </div>
             </div>
           </article>
         ))}
@@ -788,8 +857,8 @@ export function App() {
         {isAdmin ? (
           <article>
             <h3>Distribuição</h3>
-            <p className="panel-hint">Mercado Livre não é enviado a grupos fechados. Para Telegram, use audience: public. Amazon e Shopee podem seguir as regras da conta afiliada.</p>
-            <div className="mini-actions"><button onClick={() => setChannelConfig(channelExamples.webhook)}>Modelo Webhook</button><button onClick={() => setChannelConfig(channelExamples.telegram)}>Modelo Telegram</button><button onClick={() => setChannelConfig(channelExamples.evolution)}>Modelo Evolution</button></div>
+            <p className="panel-hint">Cadastre um canal WhatsApp/Evolution ativo. As ofertas afiliadas podem ser enviadas por clique e o robô também dispara automaticamente quando a regra de alerta combina.</p>
+            <div className="mini-actions"><button onClick={() => setChannelConfig(channelExamples.webhook)}>Modelo Webhook</button><button onClick={() => setChannelConfig(channelExamples.telegram)}>Modelo Telegram</button><button onClick={() => setChannelConfig(channelExamples.whatsapp)}>Modelo WhatsApp</button><button onClick={() => setChannelConfig(channelExamples.evolution)}>Modelo Evolution</button></div>
             <textarea value={channelConfig} onChange={(event) => setChannelConfig(event.target.value)} />
             <div className="mini-actions"><button onClick={() => createChannel('webhook')}>Webhook</button><button onClick={() => createChannel('telegram')}>Telegram</button><button onClick={() => createChannel('whatsapp')}>WhatsApp</button><button onClick={() => createChannel('evolution')}>Evolution API</button></div>
             <div className="compact-list">{channels.slice(0, 8).map((channel) => <div className="compact-row" key={channel.id}><span>{channel.name}<small>{channel.type} • {channel.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleChannel(channel)}>{channel.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
