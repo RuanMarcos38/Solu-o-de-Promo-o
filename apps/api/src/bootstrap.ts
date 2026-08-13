@@ -113,7 +113,7 @@ const alertCreateSchema = z.object({
   name: z.string().trim().min(2).max(120),
   keywords: z.union([z.array(z.string()), z.string()]).optional().default([]),
   marketplaces: z.union([z.array(z.string()), z.string()]).optional().default([]),
-  minDiscountPercent: z.coerce.number().int().min(0).max(100).optional().default(10),
+  minDiscountPercent: z.coerce.number().int().min(50).max(100).optional().default(config.minDiscountPercent),
   maxPrice: z.coerce.number().nonnegative().nullable().optional().default(null),
   isActive: z.boolean().optional().default(true)
 });
@@ -122,7 +122,7 @@ const alertUpdateSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   keywords: z.union([z.array(z.string()), z.string()]).optional(),
   marketplaces: z.union([z.array(z.string()), z.string()]).optional(),
-  minDiscountPercent: z.coerce.number().int().min(0).max(100).optional(),
+  minDiscountPercent: z.coerce.number().int().min(50).max(100).optional(),
   maxPrice: z.coerce.number().nonnegative().nullable().optional(),
   isActive: z.boolean().optional()
 }).refine((body) => Object.keys(body).length > 0, 'Informe pelo menos um campo para atualização');

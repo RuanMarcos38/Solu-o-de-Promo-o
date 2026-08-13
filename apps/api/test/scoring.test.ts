@@ -12,7 +12,7 @@ function makeOffer(overrides: Partial<NormalizedOffer> = {}): NormalizedOffer {
     normalizedTitle: 'notebook gamer',
     currentPrice: 2500,
     originalPrice: 4000,
-    discountPercent: 37.5,
+    discountPercent: 60,
     imageUrl: 'https://example.com/image.jpg',
     productUrl: 'https://example.com/product',
     affiliateUrl: 'https://example.com/affiliate',
@@ -42,7 +42,7 @@ describe('scoring', () => {
   test('limita o score a 100 e valoriza sinais de qualidade', () => {
     const strongScore = calculateScore(makeOffer());
     const weakScore = calculateScore(makeOffer({
-      discountPercent: 10,
+      discountPercent: 20,
       imageUrl: undefined,
       sellerName: undefined,
       rating: undefined,
@@ -67,10 +67,10 @@ describe('scoring', () => {
     assert.equal(isApprovedOffer(makeOffer({
       affiliateUrl: undefined,
       affiliateEligible: false,
-      discountPercent: 0,
+      discountPercent: 50,
       score: 12
     }), {
-      minDiscountPercent: 0,
+      minDiscountPercent: 50,
       minOpportunityScore: 0,
       requireVerifiedAffiliateLinks: false
     }), true);

@@ -58,7 +58,7 @@ before(async () => {
       normalizedTitle: 'notebook para painel operacional',
       currentPrice: 1999.9,
       originalPrice: 2999.9,
-      discountPercent: 33.34,
+      discountPercent: 60,
       productUrl: 'https://example.com/notebook-ops',
       score: 91
     }

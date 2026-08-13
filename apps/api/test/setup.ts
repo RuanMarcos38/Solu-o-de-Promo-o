@@ -13,7 +13,7 @@ process.env.ADMIN_PASSWORD ||= 'TestAdminPassword123!';
 process.env.CHANNEL_CONFIG_ENCRYPTION_KEY ||= Buffer.alloc(32, 7).toString('base64');
 process.env.ALLOW_INSECURE_OUTBOUND_HTTP ||= 'false';
 process.env.COLLECT_INTERVAL_SECONDS ||= '3600';
-process.env.MIN_DISCOUNT_PERCENT ||= '10';
+process.env.MIN_DISCOUNT_PERCENT ||= '50';
 process.env.MIN_OPPORTUNITY_SCORE ||= '55';
 
 if (process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL.includes('promo_test')) {

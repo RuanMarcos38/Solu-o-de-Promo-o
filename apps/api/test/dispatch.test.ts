@@ -13,7 +13,7 @@ const offer: OfferForDispatch = {
   id: 'offer-1',
   title: 'Smart TV 55 4K Samsung',
   currentPrice: 2199.9,
-  discountPercent: 35,
+  discountPercent: 55,
   productUrl: 'https://example.com/product',
   affiliateUrl: 'https://example.com/affiliate',
   affiliateEligible: true,
@@ -26,7 +26,7 @@ function alert(overrides: Partial<AlertForMatch> = {}): AlertForMatch {
     name: 'TV em promoção',
     keywords: ['smart tv'],
     marketplaces: ['mercadolivre'],
-    minDiscountPercent: 20,
+    minDiscountPercent: 50,
     maxPrice: 2500,
     ...overrides
   };
@@ -37,7 +37,7 @@ describe('distribuição', () => {
     assert.equal(offerMatchesAlert(offer, alert()), true);
     assert.equal(offerMatchesAlert(offer, alert({ keywords: ['notebook'] })), false);
     assert.equal(offerMatchesAlert(offer, alert({ marketplaces: ['amazon'] })), false);
-    assert.equal(offerMatchesAlert(offer, alert({ minDiscountPercent: 40 })), false);
+    assert.equal(offerMatchesAlert(offer, alert({ minDiscountPercent: 60 })), false);
     assert.equal(offerMatchesAlert(offer, alert({ maxPrice: 2000 })), false);
   });
 
@@ -55,7 +55,7 @@ describe('distribuição', () => {
 
     assert.match(message, /Oferta encontrada/);
     assert.match(message, /R\$\s?2\.199,90/);
-    assert.match(message, /35% OFF/);
+    assert.match(message, /55% OFF/);
     assert.match(message, /Score: 92/);
     assert.match(message, /https:\/\/example\.com\/affiliate/);
     assert.equal(message.includes(offer.productUrl), false);

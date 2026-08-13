@@ -137,7 +137,7 @@ describe('API integrada', () => {
         name: 'Alerta autorizado',
         keywords: ['notebook'],
         marketplaces: ['mercadolivre'],
-        minDiscountPercent: 20,
+        minDiscountPercent: 50,
         maxPrice: 4000
       }
     });
@@ -272,7 +272,7 @@ describe('API integrada', () => {
       normalizedTitle: 'notebook gamer deduplicacao',
       currentPrice: 2499.9,
       originalPrice: 3999.9,
-      discountPercent: 37.5,
+      discountPercent: 60,
       imageUrl: 'https://example.com/notebook.jpg',
       productUrl: 'https://example.com/notebook',
       affiliateUrl: 'https://mercado.li/notebook-afiliado',
@@ -319,7 +319,7 @@ describe('API integrada', () => {
         name: 'Somente geladeiras',
         keywords: ['geladeira'],
         marketplaces: ['mercadolivre'],
-        minDiscountPercent: 10,
+        minDiscountPercent: 50,
         isActive: true
       }
     });

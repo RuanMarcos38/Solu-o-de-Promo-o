@@ -47,7 +47,19 @@ export const platformSettingsSchema = z.object({
 
 export type PlatformSettings = z.infer<typeof platformSettingsSchema>;
 
-export const defaultPlatformSettings: PlatformSettings = platformSettingsSchema.parse({
+export const minimumVisibleDiscountPercent = 50;
+
+export function normalizePlatformSettings(settings: PlatformSettings): PlatformSettings {
+  return {
+    ...settings,
+    qualification: {
+      ...settings.qualification,
+      minDiscountPercent: Math.max(minimumVisibleDiscountPercent, settings.qualification.minDiscountPercent)
+    }
+  };
+}
+
+export const defaultPlatformSettings: PlatformSettings = normalizePlatformSettings(platformSettingsSchema.parse({
   branding: {
     platformName: 'Zenite Ofertas',
     timezone: 'America/Sao_Paulo',
@@ -73,7 +85,7 @@ export const defaultPlatformSettings: PlatformSettings = platformSettingsSchema.
     defaultPageSize: 50,
     maxPageSize: 200
   }
-});
+}));
 
 export type PlatformSettingsRecord = {
   settings: PlatformSettings;
@@ -104,7 +116,7 @@ export async function getPlatformSettings(): Promise<PlatformSettingsRecord> {
   }
 
   return {
-    settings: platformSettingsSchema.parse(record.value),
+    settings: normalizePlatformSettings(platformSettingsSchema.parse(record.value)),
     version: record.version,
     updatedBy: record.updatedBy,
     updatedAt: record.updatedAt,
@@ -117,7 +129,7 @@ export async function savePlatformSettings(input: {
   expectedVersion: number;
   updatedBy: string;
 }): Promise<PlatformSettingsRecord> {
-  const settings = platformSettingsSchema.parse(input.settings);
+  const settings = normalizePlatformSettings(platformSettingsSchema.parse(input.settings));
 
   let saved;
   try {

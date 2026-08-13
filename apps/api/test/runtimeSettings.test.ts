@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { defaultPlatformSettings, platformSettingsSchema } from '../src/runtimeSettings.js';
+import { defaultPlatformSettings, minimumVisibleDiscountPercent, normalizePlatformSettings, platformSettingsSchema } from '../src/runtimeSettings.js';
 
 function settingsCopy() {
   return structuredClone(defaultPlatformSettings);
@@ -11,10 +11,16 @@ describe('configurações parametrizadas', () => {
     const settings = settingsCopy();
     settings.branding.platformName = 'CRM R2 Marketing Digital Ofertas';
     settings.collection.intervalSeconds = 300;
-    settings.qualification.minDiscountPercent = 18;
+    settings.qualification.minDiscountPercent = minimumVisibleDiscountPercent;
     settings.dispatch.maxOffersPerCycle = 75;
 
     assert.deepEqual(platformSettingsSchema.parse(settings), settings);
+  });
+
+  test('mantem piso comercial de 50 por cento para nao poluir a vitrine', () => {
+    const settings = settingsCopy();
+    settings.qualification.minDiscountPercent = 10;
+    assert.equal(normalizePlatformSettings(settings).qualification.minDiscountPercent, 50);
   });
 
   test('bloqueia campos desconhecidos e possíveis segredos', () => {

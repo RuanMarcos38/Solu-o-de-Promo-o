@@ -2,6 +2,7 @@ import { getAdapter } from './adapters/index.js';
 import { dispatchOffers } from './dispatch.js';
 import { upsertOffers } from './offerStore.js';
 import { getPlatformSettings } from './runtimeSettings.js';
+import { isApprovedOffer } from './scoring.js';
 import { getCollectionTargets } from './sources.js';
 import type { MarketplaceName, NormalizedOffer } from './types.js';
 
@@ -29,10 +30,11 @@ export async function runCollection(options?: { keyword?: string; marketplace?: 
     try {
       const found = await adapter.search({ keyword: target.keyword, limit: settings.collection.maxResultsPerSource });
       const criteria = options?.keyword
-        ? { ...settings.qualification, minDiscountPercent: 0, minOpportunityScore: 0, requireVerifiedAffiliateLinks: false }
+        ? { ...settings.qualification, minOpportunityScore: 0, requireVerifiedAffiliateLinks: false }
         : settings.qualification;
+      const qualifiedFound = found.filter((offer) => isApprovedOffer(offer, criteria));
       const saved = await upsertOffers(found, criteria);
-      collected.push(...(options?.keyword ? found.map(toImmediateOffer) : saved));
+      collected.push(...(options?.keyword ? qualifiedFound.map(toImmediateOffer) : saved));
       approved.push(...saved.filter((offer) => offer.affiliateEligible && offer.affiliateUrl));
     } catch (error) {
       errors.push({ marketplace: adapter.name, keyword: target.keyword, error: error instanceof Error ? error.message : 'Erro desconhecido' });

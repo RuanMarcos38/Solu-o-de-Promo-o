@@ -166,7 +166,7 @@ export const config = {
   apiPort: Math.min(65_535, Math.max(1, Math.floor(readNumber('API_PORT', 3333)))),
   frontendOrigins,
   defaultKeywords: readList('DEFAULT_KEYWORDS', ['iphone', 'smart tv', 'notebook', 'air fryer']),
-  minDiscountPercent: readNumber('MIN_DISCOUNT_PERCENT', 10),
+  minDiscountPercent: Math.max(50, readNumber('MIN_DISCOUNT_PERCENT', 50)),
   minOpportunityScore: readNumber('MIN_OPPORTUNITY_SCORE', 55),
   maxResultsPerSource: readNumber('MAX_RESULTS_PER_SOURCE', 30),
   collectIntervalSeconds: readNumber('COLLECT_INTERVAL_SECONDS', 60),

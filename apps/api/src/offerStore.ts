@@ -1,6 +1,7 @@
 import { Marketplace } from '@prisma/client';
 import type { NormalizedOffer } from './types.js';
 import { isApprovedOffer, type QualificationCriteria } from './scoring.js';
+import { config } from './config.js';
 import { prisma } from './db.js';
 
 const marketplaceMap: Record<string, Marketplace> = {
@@ -127,7 +128,7 @@ export async function listOffers(
   if (marketplace) where.marketplace = marketplace;
   if (filters.keyword) where.normalizedTitle = { contains: filters.keyword.toLowerCase(), mode: 'insensitive' };
   if (filters.category) where.category = { contains: filters.category, mode: 'insensitive' };
-  if (filters.minDiscount !== undefined) where.discountPercent = { gte: filters.minDiscount };
+  where.discountPercent = { gte: Math.max(config.minDiscountPercent, filters.minDiscount ?? config.minDiscountPercent) };
   if (filters.maxPrice !== undefined) where.currentPrice = { lte: filters.maxPrice };
   if (filters.minScore !== undefined) where.score = { gte: filters.minScore };
 
@@ -152,11 +153,12 @@ export async function getOfferHistory(offerId: string) {
 }
 
 export async function getStats() {
+  const qualifiedWhere = { isActive: true, affiliateEligible: true, discountPercent: { gte: config.minDiscountPercent } };
   const [totalOffers, bestScore, bestDiscount, byMarketplace] = await Promise.all([
-    prisma.offer.count({ where: { isActive: true, affiliateEligible: true } }),
-    prisma.offer.findFirst({ where: { isActive: true, affiliateEligible: true }, orderBy: { score: 'desc' } }),
-    prisma.offer.findFirst({ where: { isActive: true, affiliateEligible: true }, orderBy: { discountPercent: 'desc' } }),
-    prisma.offer.groupBy({ by: ['marketplace'], where: { isActive: true, affiliateEligible: true }, _count: { marketplace: true } })
+    prisma.offer.count({ where: qualifiedWhere }),
+    prisma.offer.findFirst({ where: qualifiedWhere, orderBy: { score: 'desc' } }),
+    prisma.offer.findFirst({ where: qualifiedWhere, orderBy: { discountPercent: 'desc' } }),
+    prisma.offer.groupBy({ by: ['marketplace'], where: qualifiedWhere, _count: { marketplace: true } })
   ]);
 
   return {

@@ -59,7 +59,9 @@ type PlatformSettingsRecord = {
 };
 
 type Language = 'pt-BR' | 'en-US' | 'es-ES';
+type ViewKey = 'dashboard' | 'offers' | 'marketplaces' | 'operation' | 'settings';
 
+const minimumDiscountPercent = 50;
 const productionApiUrl = 'https://api-ofertas.r2rmarketingdigital.com.br';
 const apiUrl = (import.meta.env.VITE_API_URL ?? productionApiUrl).replace(/\/$/, '');
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -163,7 +165,7 @@ export function App() {
   const [stats, setStats] = useState<Stats>({ totalOffers: 0, bestScore: 0, bestDiscount: 0, marketplaces: {} });
   const [keyword, setKeyword] = useState('iphone');
   const [marketplace, setMarketplace] = useState('mercadolivre');
-  const [minDiscount, setMinDiscount] = useState('10');
+  const [minDiscount, setMinDiscount] = useState(String(minimumDiscountPercent));
   const [loading, setLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [sources, setSources] = useState<Source[]>([]);
@@ -180,6 +182,7 @@ export function App() {
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState('VIEWER');
   const [statusMessage, setStatusMessage] = useState('');
+  const [activeView, setActiveView] = useState<ViewKey>('dashboard');
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem('promo_language') as Language | null;
     return saved && saved in languages ? saved : 'pt-BR';
@@ -189,6 +192,19 @@ export function App() {
   const canEdit = currentUser?.role === 'ADMIN' || currentUser?.role === 'EDITOR';
   const statusIsError = /erro|inválid|indisponível|falha|failed|não foi possível/i.test(statusMessage);
   const t = languages[language].copy;
+  const effectiveMinDiscount = Math.max(minimumDiscountPercent, Number(minDiscount) || minimumDiscountPercent);
+  const displayedOffers = offers.filter((offer) => (offer.discountPercent ?? 0) >= effectiveMinDiscount);
+  const marketplaceCount = Object.keys(stats.marketplaces ?? {}).length;
+  const averageVisibleDiscount = displayedOffers.length
+    ? Number((displayedOffers.reduce((total, offer) => total + (offer.discountPercent ?? 0), 0) / displayedOffers.length).toFixed(1))
+    : 0;
+  const navItems: Array<{ key: ViewKey; label: string; adminOnly?: boolean }> = [
+    { key: 'dashboard', label: 'Dashboard' },
+    { key: 'offers', label: 'Ofertas 50%+' },
+    { key: 'marketplaces', label: 'Marketplaces' },
+    { key: 'operation', label: 'Operação' },
+    { key: 'settings', label: 'Configurações', adminOnly: true }
+  ];
 
   function logout() {
     sessionStorage.removeItem('promo_token');
@@ -353,12 +369,13 @@ export function App() {
       }
       const result = await response.json() as { offers?: Offer[]; approved?: Offer[]; approvedCount?: number; foundCount?: number; errors?: Array<{ error: string }> };
       const immediateOffers = result.offers ?? result.approved ?? [];
-      let visibleCount = immediateOffers.length || result.foundCount || result.approvedCount || 0;
+      const qualifiedImmediateOffers = immediateOffers.filter((offer) => (offer.discountPercent ?? 0) >= effectiveMinDiscount);
+      let visibleCount = qualifiedImmediateOffers.length || result.approvedCount || 0;
 
-      if (immediateOffers.length > 0) {
+      if (qualifiedImmediateOffers.length > 0) {
         setOffers((current) => {
           const seen = new Set<string>();
-          return [...immediateOffers, ...current].filter((offer) => {
+          return [...qualifiedImmediateOffers, ...current].filter((offer) => {
             const key = `${offer.marketplace}-${offer.externalId}`;
             if (seen.has(key)) return false;
             seen.add(key);
@@ -402,7 +419,7 @@ export function App() {
   async function createAlert() {
     await apiFetch('/alerts', {
       method: 'POST',
-      body: JSON.stringify({ name: `Alerta ${keyword}`, keywords: keyword.split(',').map((item) => item.trim()).filter(Boolean), marketplaces: [marketplace], minDiscountPercent: Number(minDiscount || 10) })
+      body: JSON.stringify({ name: `Alerta ${keyword}`, keywords: keyword.split(',').map((item) => item.trim()).filter(Boolean), marketplaces: [marketplace], minDiscountPercent: effectiveMinDiscount })
     });
     setStatusMessage('Alerta criado. A distribuição agora respeita alertas ativos.');
     await loadAdminData();
@@ -526,8 +543,26 @@ export function App() {
   }
 
   return (
-    <main className="app-shell">
-      <section className="hero">
+    <main className="app-shell app-workspace">
+      <nav className="main-menu" aria-label="Menu principal">
+        <div>
+          <strong>{platformSettings?.settings.branding.platformName ?? 'Zenite Ofertas'}</strong>
+          <span>Somente ofertas com {minimumDiscountPercent}%+ de desconto</span>
+        </div>
+        <div className="menu-actions">
+          {navItems.filter((item) => !item.adminOnly || isAdmin).map((item) => (
+            <button
+              key={item.key}
+              className={activeView === item.key ? 'menu-button active' : 'menu-button'}
+              onClick={() => setActiveView(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <section className="hero tool-header">
         <div className="topbar">
           <span className="badge">{t.badge} {currentUser ? `• ${currentUser.role}` : ''}</span>
           <div className="topbar-actions">
@@ -549,7 +584,7 @@ export function App() {
             <option value="amazon">Amazon</option>
             <option value="shopee">Shopee</option>
           </select>
-          <input value={minDiscount} onChange={(event) => setMinDiscount(event.target.value)} placeholder="Desconto mínimo" />
+          <input type="number" min={minimumDiscountPercent} max="100" value={minDiscount} onChange={(event) => setMinDiscount(String(Math.max(minimumDiscountPercent, Number(event.target.value) || minimumDiscountPercent)))} placeholder="Desconto mínimo" />
           <button onClick={loadData}>{t.filter}</button>
           {canEdit ? <button className="primary-action" onClick={collectNow} disabled={collecting}>{collecting ? t.searching : t.searchNow}</button> : null}
           <button onClick={loadAdminData}>{t.refresh}</button>
@@ -557,16 +592,84 @@ export function App() {
         {statusMessage ? <p className={`status-message${statusIsError ? ' status-error' : ''}`} role="status">{statusMessage}</p> : null}
       </section>
 
-      <section className="results-heading">
+      <section className="dashboard-view" hidden={activeView !== 'dashboard'}>
+        <div className="dashboard-heading">
+          <div>
+            <span className="eyebrow">Dashboard</span>
+            <h2>KPIs da operação</h2>
+            <p>Visão rápida das oportunidades qualificadas. A vitrine fica limpa: apenas ofertas com {effectiveMinDiscount}% ou mais de desconto entram no painel.</p>
+          </div>
+          <button className="primary-action" onClick={() => { setActiveView('offers'); void loadData(); }}>Ver ofertas</button>
+        </div>
+        <section className="kpi-grid" aria-label="Indicadores principais">
+          <article>
+            <span>Ofertas qualificadas</span>
+            <strong>{stats.totalOffers}</strong>
+            <small>Base aprovada com desconto mínimo de {effectiveMinDiscount}%</small>
+          </article>
+          <article>
+            <span>Na tela agora</span>
+            <strong>{displayedOffers.length}</strong>
+            <small>Resultado imediato filtrado</small>
+          </article>
+          <article>
+            <span>Maior desconto</span>
+            <strong>{stats.bestDiscount}%</strong>
+            <small>Melhor oportunidade salva</small>
+          </article>
+          <article>
+            <span>Score máximo</span>
+            <strong>{stats.bestScore}</strong>
+            <small>Qualidade da oferta</small>
+          </article>
+          <article>
+            <span>Desconto médio visível</span>
+            <strong>{averageVisibleDiscount}%</strong>
+            <small>Média da lista atual</small>
+          </article>
+          <article>
+            <span>Marketplaces ativos</span>
+            <strong>{marketplaceCount}</strong>
+            <small>Com ofertas qualificadas</small>
+          </article>
+        </section>
+        <section className="dashboard-columns">
+          <article className="dashboard-panel">
+            <h3>Status dos conectores</h3>
+            <div className="compact-list">
+              {marketplaceStatuses.map((status) => (
+                <div className="compact-row" key={status.marketplace}>
+                  <span>{status.marketplace}<small>{status.detail}</small></span>
+                  <strong className={status.configured ? 'state-ok' : 'state-warn'}>{status.configured ? t.ready : t.pending}</strong>
+                </div>
+              ))}
+            </div>
+          </article>
+          <article className="dashboard-panel">
+            <h3>Top ofertas 50%+</h3>
+            <div className="compact-list">
+              {displayedOffers.slice(0, 6).map((offer) => (
+                <div className="compact-row" key={`dash-${offer.marketplace}-${offer.externalId}`}>
+                  <span>{offer.title}<small>{offer.marketplace} - {money.format(offer.currentPrice)}</small></span>
+                  <strong>{offer.discountPercent ?? 0}%</strong>
+                </div>
+              ))}
+              {!displayedOffers.length ? <p className="panel-hint">Nenhuma oferta qualificada carregada ainda.</p> : null}
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <section className="results-heading" hidden={activeView !== 'offers'}>
         <div>
           <span className="eyebrow">{t.result}</span>
           <h2>{t.offersFound}</h2>
         </div>
-        <strong>{offers.length}</strong>
+        <strong>{displayedOffers.length}</strong>
       </section>
 
-      <section className="offer-grid">
-        {offers.map((offer) => (
+      <section className="offer-grid" hidden={activeView !== 'offers'}>
+        {displayedOffers.map((offer) => (
           <article className="offer-card" key={`${offer.marketplace}-${offer.externalId}`}>
             {offer.imageUrl ? <img src={offer.imageUrl} alt={offer.title} /> : null}
             <div>
@@ -579,7 +682,7 @@ export function App() {
             </div>
           </article>
         ))}
-        {!offers.length ? (
+        {!displayedOffers.length ? (
           <article className="empty-results">
             <h2>{t.emptyTitle}</h2>
             <p>{t.emptyText}</p>
@@ -587,13 +690,7 @@ export function App() {
         ) : null}
       </section>
 
-      <section className="stats-grid">
-        <article><strong>{stats.totalOffers}</strong><span>{t.approved}</span></article>
-        <article><strong>{stats.bestScore}</strong><span>{t.bestScore}</span></article>
-        <article><strong>{stats.bestDiscount}%</strong><span>{t.bestDiscount}</span></article>
-      </section>
-
-      <section className="admin-grid">
+      <section className="admin-grid" hidden={activeView !== 'marketplaces'}>
         {marketplaceStatuses.map((status) => (
           <article key={status.marketplace}>
             <h3>{status.marketplace}</h3>
@@ -604,7 +701,7 @@ export function App() {
       </section>
 
       {isAdmin && system ? (
-        <section className="admin-grid">
+        <section className="admin-grid" hidden={activeView !== 'operation'}>
           <article>
             <h3>Status da operação</h3>
             <div className="compact-list">
@@ -632,7 +729,7 @@ export function App() {
       ) : null}
 
       {isAdmin && platformSettings ? (
-        <section className="settings-panel">
+        <section className="settings-panel" hidden={activeView !== 'settings'}>
           <div className="settings-heading">
             <div>
               <span className="badge">Configuração operacional v{platformSettings.version}</span>
@@ -656,7 +753,7 @@ export function App() {
             </fieldset>
             <fieldset>
               <legend>Qualificação</legend>
-              <label>Desconto mínimo (%)<input type="number" min="0" max="100" value={platformSettings.settings.qualification.minDiscountPercent} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, qualification: { ...settings.qualification, minDiscountPercent: Number(event.target.value) } }))} /></label>
+              <label>Desconto mínimo (%)<input type="number" min={minimumDiscountPercent} max="100" value={Math.max(minimumDiscountPercent, platformSettings.settings.qualification.minDiscountPercent)} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, qualification: { ...settings.qualification, minDiscountPercent: Math.max(minimumDiscountPercent, Number(event.target.value) || minimumDiscountPercent) } }))} /></label>
               <label>Score mínimo<input type="number" min="0" max="100" value={platformSettings.settings.qualification.minOpportunityScore} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, qualification: { ...settings.qualification, minOpportunityScore: Number(event.target.value) } }))} /></label>
               <label className="check-row locked"><input type="checkbox" checked disabled />Somente links afiliados verificados</label>
             </fieldset>
@@ -676,7 +773,7 @@ export function App() {
         </section>
       ) : null}
 
-      <section className="admin-grid">
+      <section className="admin-grid" hidden={activeView !== 'operation'}>
         <article>
           <h3>Fontes</h3>
           {canEdit ? <button onClick={createSource}>Criar fonte da busca atual</button> : <p className="panel-hint">Acesso somente para consulta.</p>}
@@ -701,7 +798,7 @@ export function App() {
       </section>
 
       {(isAdmin || canEdit) ? (
-        <section className="admin-grid">
+        <section className="admin-grid" hidden={activeView !== 'operation'}>
           {isAdmin ? (
             <article>
               <h3>Usuários</h3>

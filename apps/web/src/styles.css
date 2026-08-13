@@ -6,6 +6,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { min-width: 320px; overflow-x: hidden; }
 body {
   margin: 0;
@@ -19,8 +20,93 @@ button, input, select, textarea { font: inherit; }
 img, video { display: block; max-width: 100%; }
 
 .app-shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: clamp(24px, 5vw, 42px) 0; }
+.app-workspace { display: grid; gap: 18px; }
 .auth-shell { min-height: 100svh; display: grid; place-items: center; padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 .auth-card { width: min(560px, 100%); }
+
+.main-menu {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 18px;
+  background: rgba(8, 13, 24, .94);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .26);
+}
+.main-menu > div:first-child { display: grid; gap: 3px; min-width: 190px; }
+.main-menu strong { font-size: 1rem; }
+.main-menu span { color: #a7b4c7; font-size: .78rem; font-weight: 750; }
+.menu-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.menu-button {
+  min-height: 40px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: transparent;
+  color: #dbe4ef;
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+.menu-button:hover { background: rgba(255, 255, 255, .06); }
+.menu-button.active {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: rgba(255, 255, 255, .55);
+}
+.tool-header { border-radius: 18px; padding: clamp(20px, 3vw, 30px); }
+.tool-header h1 { font-size: clamp(2rem, 5vw, 3.8rem); }
+
+.dashboard-view { display: grid; gap: 16px; }
+.dashboard-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 2px 2px;
+}
+.dashboard-heading h2 { font-size: clamp(1.8rem, 4vw, 2.8rem); }
+.dashboard-heading p { max-width: 740px; margin: 8px 0 0; }
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: 12px;
+}
+.kpi-grid article {
+  display: grid;
+  gap: 8px;
+  min-height: 142px;
+  padding: 18px;
+  border-radius: 12px;
+  background: #111827;
+  border: 1px solid rgba(148, 163, 184, .16);
+}
+.kpi-grid article:nth-child(2) { background: #14221a; }
+.kpi-grid article:nth-child(3) { background: #241b13; }
+.kpi-grid article:nth-child(4) { background: #151c2a; }
+.kpi-grid article:nth-child(5) { background: #211827; }
+.kpi-grid span { color: #c7d2df; font-size: .82rem; font-weight: 850; }
+.kpi-grid strong { align-self: end; font-size: clamp(2rem, 5vw, 3rem); line-height: 1; }
+.kpi-grid small { color: #9aa8ba; line-height: 1.35; }
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.35fr);
+  gap: 14px;
+}
+.dashboard-panel {
+  min-width: 0;
+  padding: 20px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, .72);
+  border: 1px solid rgba(148, 163, 184, .15);
+}
+.dashboard-panel h3 { margin-bottom: 12px; }
+.state-ok { color: #86efac; }
+.state-warn { color: #fcd34d; }
 
 .hero {
   display: grid;
@@ -205,7 +291,10 @@ button:disabled { opacity: .65; cursor: progress; }
 
 @media (max-width: 860px) {
   .operations-columns { grid-template-columns: 1fr; }
+  .dashboard-columns { grid-template-columns: 1fr; }
   .operations-header, .settings-heading { flex-direction: column; }
+  .dashboard-heading { align-items: stretch; flex-direction: column; }
+  .dashboard-heading button { width: 100%; }
   .operations-header button, .settings-heading button { width: 100%; }
 }
 
@@ -218,6 +307,9 @@ button:disabled { opacity: .65; cursor: progress; }
   p { line-height: 1.55; }
   input, select, textarea { font-size: 16px; }
   .topbar, .topbar-actions, .results-heading { align-items: stretch; flex-direction: column; }
+  .main-menu { position: static; align-items: stretch; flex-direction: column; }
+  .menu-actions { justify-content: stretch; }
+  .menu-button { flex: 1 1 100%; width: 100%; }
   .topbar .badge { max-width: 100%; }
   .topbar button, .collector-actions > *, .mini-actions > * { width: 100%; flex-basis: 100%; }
   .language-select { align-items: stretch; flex-direction: column; }
