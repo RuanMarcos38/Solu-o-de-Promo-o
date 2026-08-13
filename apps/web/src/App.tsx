@@ -73,17 +73,17 @@ const languages: Record<Language, { label: string; short: string; copy: Record<s
     label: 'Português do Brasil',
     short: 'PT-BR',
     copy: {
-      badge: 'Radar ao vivo',
+      badge: 'Operação online',
       logout: 'Sair',
-      hero: 'Painel para encontrar oportunidades em marketplaces confiáveis, aprovar ofertas por score e distribuir automaticamente conforme alertas ativos.',
+      hero: 'Central SaaS para buscar ofertas qualificadas, gerar links afiliados e distribuir oportunidades com controle operacional.',
       filter: 'Filtrar',
-      searchNow: 'Buscar e mostrar agora',
+      searchNow: 'Buscar agora',
       searching: 'Buscando...',
-      refresh: 'Atualizar operação',
-      result: 'Resultado imediato',
+      refresh: 'Sincronizar dados',
+      result: 'Lista de ofertas',
       offersFound: 'Ofertas encontradas',
       emptyTitle: 'Nenhuma oferta na tela ainda',
-      emptyText: 'Use "Buscar e mostrar agora" para consultar o marketplace e carregar os resultados imediatamente.',
+      emptyText: 'Use "Buscar agora" para consultar o marketplace e carregar os resultados imediatamente.',
       affiliateLink: 'Ver oferta afiliada',
       affiliateProduct: 'Afiliar produto',
       copyAffiliate: 'Copiar link',
@@ -102,14 +102,14 @@ const languages: Record<Language, { label: string; short: string; copy: Record<s
     label: 'English',
     short: 'EN',
     copy: {
-      badge: 'Live radar',
+      badge: 'Online operation',
       logout: 'Sign out',
-      hero: 'Dashboard to find marketplace opportunities, approve offers by score, and distribute them automatically according to active alerts.',
+      hero: 'SaaS workspace to find qualified offers, create affiliate links, and distribute opportunities with operational control.',
       filter: 'Filter',
-      searchNow: 'Search and show now',
+      searchNow: 'Search now',
       searching: 'Searching...',
-      refresh: 'Refresh operation',
-      result: 'Immediate result',
+      refresh: 'Sync data',
+      result: 'Offer list',
       offersFound: 'Offers found',
       emptyTitle: 'No offers on screen yet',
       emptyText: 'Use "Search and show now" to query the marketplace and load results immediately.',
@@ -131,14 +131,14 @@ const languages: Record<Language, { label: string; short: string; copy: Record<s
     label: 'Español',
     short: 'ES',
     copy: {
-      badge: 'Radar en vivo',
+      badge: 'Operación online',
       logout: 'Salir',
-      hero: 'Panel para encontrar oportunidades en marketplaces confiables, aprobar ofertas por score y distribuirlas automáticamente según alertas activas.',
+      hero: 'Espacio SaaS para buscar ofertas calificadas, crear enlaces afiliados y distribuir oportunidades con control operativo.',
       filter: 'Filtrar',
-      searchNow: 'Buscar y mostrar ahora',
+      searchNow: 'Buscar ahora',
       searching: 'Buscando...',
-      refresh: 'Actualizar operación',
-      result: 'Resultado inmediato',
+      refresh: 'Sincronizar datos',
+      result: 'Lista de ofertas',
       offersFound: 'Ofertas encontradas',
       emptyTitle: 'Todavía no hay ofertas en pantalla',
       emptyText: 'Usa "Buscar y mostrar ahora" para consultar el marketplace y cargar los resultados de inmediato.',
@@ -202,6 +202,7 @@ export function App() {
   const canEdit = currentUser?.role === 'ADMIN' || currentUser?.role === 'EDITOR';
   const statusIsError = /erro|inválid|indisponível|falha|failed|não foi possível/i.test(statusMessage);
   const t = languages[language].copy;
+  const platformName = platformSettings?.settings.branding.platformName ?? 'Zenite Ofertas';
   const effectiveMinDiscount = Math.max(minimumDiscountPercent, Number(minDiscount) || minimumDiscountPercent);
   const displayedOffers = offers.filter((offer) => (offer.discountPercent ?? 0) >= effectiveMinDiscount);
   const marketplaceCount = Object.keys(stats.marketplaces ?? {}).length;
@@ -584,9 +585,13 @@ export function App() {
   if (!token) {
     return (
       <main className="app-shell auth-shell">
-        <section className="hero auth-card">
+        <section className="auth-card">
+          <div className="auth-brand">
+            <span className="brand-mark" aria-hidden="true">ZO</span>
+            <strong>{platformName}</strong>
+          </div>
           <span className="badge">Acesso administrativo</span>
-          <h1>Solução de Promoção</h1>
+          <h1>{platformName}</h1>
           <p>Entre para administrar fontes, alertas, usuários, canais de distribuição e varreduras em tempo real.</p>
           <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void loginNow(); }}>
             <label htmlFor="login-email">E-mail</label>
@@ -604,9 +609,12 @@ export function App() {
   return (
     <main className="app-shell app-workspace">
       <nav className="main-menu" aria-label="Menu principal">
-        <div>
-          <strong>{platformSettings?.settings.branding.platformName ?? 'Zenite Ofertas'}</strong>
-          <span>Somente ofertas com {minimumDiscountPercent}%+ de desconto</span>
+        <div className="brand-lockup">
+          <span className="brand-mark" aria-hidden="true">ZO</span>
+          <div>
+            <strong>{platformName}</strong>
+            <span>Ofertas qualificadas a partir de {minimumDiscountPercent}%</span>
+          </div>
         </div>
         <div className="menu-actions">
           {navItems.filter((item) => !item.adminOnly || isAdmin).map((item) => (
@@ -621,7 +629,7 @@ export function App() {
         </div>
       </nav>
 
-      <section className="hero tool-header">
+      <section className="workspace-header">
         <div className="topbar">
           <span className="badge">{t.badge} {currentUser ? `• ${currentUser.role}` : ''}</span>
           <div className="topbar-actions">
@@ -634,8 +642,11 @@ export function App() {
             <button className="ghost-button" onClick={logout}>{t.logout}</button>
           </div>
         </div>
-        <h1>{platformSettings?.settings.branding.platformName ?? 'Solução de Promoção'}</h1>
-        <p>{t.hero}</p>
+        <div className="header-copy">
+          <span className="eyebrow">Central comercial</span>
+          <h1>{platformName}</h1>
+          <p>{t.hero}</p>
+        </div>
         <div className="collector-actions">
           <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="iphone, notebook, smart tv..." />
           <select value={marketplace} onChange={(event) => setMarketplace(event.target.value)}>
@@ -669,7 +680,7 @@ export function App() {
           <article>
             <span>Na tela agora</span>
             <strong>{displayedOffers.length}</strong>
-            <small>Resultado imediato filtrado</small>
+            <small>Resultado filtrado da busca atual</small>
           </article>
           <article>
             <span>Maior desconto</span>

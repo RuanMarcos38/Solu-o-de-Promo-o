@@ -1,4 +1,4 @@
-# Solução de Promoção — Radar de Ofertas em Tempo Real
+# Zenite Ofertas — Plataforma SaaS de Afiliados
 
 Plataforma SaaS para monitorar oportunidades de ofertas em marketplaces confiáveis, normalizar produtos, calcular score de promoção, evitar duplicidade e distribuir ofertas em tempo real para painel web, API, WhatsApp/Telegram/e-mail e canais de afiliados.
 
