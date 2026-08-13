@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { getMarketplaceStatuses } from '../src/adapters/index.js';
 import { amazonPublicKeywordVariants, amazonTokenEndpoint, normalizeAmazonItem, normalizeAmazonPublicBlock } from '../src/adapters/amazon.js';
 import { normalizeMercadoLivreItem, parseMercadoLivreOfferPage } from '../src/adapters/mercadoLivre.js';
 import { buildShopeeApifyInput, createShopeeSignature, normalizeShopeeApifyItem, normalizeShopeeNode } from '../src/adapters/shopee.js';
 
 describe('adaptadores de marketplaces', () => {
+  test('marca Mercado Livre como pronto quando a busca publica esta ativa', () => {
+    const mercadoLivre = getMarketplaceStatuses().find((status) => status.marketplace === 'mercadolivre');
+
+    assert.ok(mercadoLivre);
+    assert.equal(mercadoLivre.enabled, true);
+    assert.equal(mercadoLivre.configured, true);
+    assert.match(mercadoLivre.detail, /Busca publica ativa|Busca oficial/);
+  });
+
   test('normaliza Mercado Livre sem inventar link afiliado', () => {
     const offer = normalizeMercadoLivreItem({
       id: 'MLB123',

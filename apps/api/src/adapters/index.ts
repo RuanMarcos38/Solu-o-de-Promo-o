@@ -15,26 +15,36 @@ export function getAdapter(name: MarketplaceName) {
 }
 
 export function getMarketplaceStatuses() {
+  const mercadoLivreAffiliateLinks = Boolean(config.affiliateResolverUrl);
+  const amazonOfficialReady = Boolean(
+    config.amazonEnabled
+    && config.amazonCredentialId
+    && config.amazonCredentialSecret
+    && config.amazonPartnerTag
+  );
+
   return [
     {
       marketplace: 'mercadolivre',
       enabled: true,
-      configured: Boolean(config.mercadoLivreAccessToken),
-      affiliateLinks: Boolean(config.affiliateResolverUrl),
+      configured: true,
+      affiliateLinks: mercadoLivreAffiliateLinks,
       detail: config.mercadoLivreAccessToken
-        ? config.affiliateResolverUrl
+        ? mercadoLivreAffiliateLinks
           ? 'Busca oficial e resolvedor autorizado configurados.'
           : 'Busca oficial configurada. Cadastre o resolvedor autorizado para gerar links rastreaveis.'
-        : 'Conector ativo para busca. Cadastre MERCADO_LIVRE_ACCESS_TOKEN no EasyPanel para reduzir bloqueios da API oficial.'
+        : mercadoLivreAffiliateLinks
+          ? 'Busca publica ativa e resolvedor autorizado configurado.'
+          : 'Busca publica ativa no Mercado Livre. MERCADO_LIVRE_ACCESS_TOKEN e resolvedor autorizado seguem opcionais para links rastreaveis.'
     },
     {
       marketplace: 'amazon',
       enabled: true,
-      configured: Boolean(config.amazonEnabled && config.amazonCredentialId && config.amazonCredentialSecret && config.amazonPartnerTag),
+      configured: amazonOfficialReady,
       affiliateLinks: Boolean(config.amazonPartnerTag),
-      detail: config.amazonEnabled && config.amazonCredentialId && config.amazonCredentialSecret && config.amazonPartnerTag
+      detail: amazonOfficialReady
         ? 'Amazon Creators API configurada com OAuth 2.0 e Partner Tag.'
-        : 'Busca publica de exibicao ativa. Para links rastreaveis, configure Amazon Creators API e AMAZON_PARTNER_TAG.'
+        : 'Credenciais oficiais da Amazon ausentes. Configure Amazon Creators API e AMAZON_PARTNER_TAG no EasyPanel para busca estavel e links rastreaveis.'
     },
     {
       marketplace: 'shopee',
