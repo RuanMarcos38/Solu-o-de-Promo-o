@@ -7,6 +7,7 @@ import './system-dashboard.css';
 import './automation-dock.css';
 import './automation-groups.css';
 import './zenite-enterprise.css';
+import './zenite-reference-exact.css';
 
 document.documentElement.lang = 'pt-BR';
 localStorage.setItem('promo_language', 'pt-BR');
