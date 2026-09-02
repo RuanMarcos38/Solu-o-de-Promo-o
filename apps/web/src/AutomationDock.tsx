@@ -17,6 +17,14 @@ type AutomationResult = {
   failed: Array<{ channel: string; error: string }>;
 };
 
+type SafeChannel = {
+  id: string;
+  name: string;
+  type: string;
+  isActive: boolean;
+  configSummary?: { audience?: string; number?: string; to?: string };
+};
+
 const productionApiUrl = 'https://api-ofertas.r2rmarketingdigital.com.br';
 const apiUrl = (import.meta.env.VITE_API_URL ?? productionApiUrl).replace(/\/$/, '');
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -24,9 +32,15 @@ const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL
 export function AutomationDock() {
   const [open, setOpen] = useState(false);
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [channels, setChannels] = useState<SafeChannel[]>([]);
+  const [role, setRole] = useState('');
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState('');
   const [message, setMessage] = useState('');
+  const [groupName, setGroupName] = useState('');
+  const [groupNumber, setGroupNumber] = useState('');
+  const [groupAudience, setGroupAudience] = useState<'public' | 'private'>('public');
+  const [savingGroup, setSavingGroup] = useState(false);
 
   async function authenticatedFetch(path: string, options: RequestInit = {}) {
     const token = sessionStorage.getItem('promo_token');
@@ -44,17 +58,32 @@ export function AutomationDock() {
     return { response, data };
   }
 
+  async function loadChannels(currentRole: string) {
+    if (currentRole !== 'ADMIN') {
+      setChannels([]);
+      return;
+    }
+    const result = await authenticatedFetch('/dispatch/channels');
+    const data = result.data as unknown as { channels?: SafeChannel[] };
+    setChannels((data.channels ?? []).filter((channel) => ['whatsapp', 'evolution'].includes(channel.type)));
+  }
+
   async function loadOffers() {
     setLoading(true);
     setMessage('');
     try {
       const auth = await authenticatedFetch('/auth/me');
       const user = (auth.data as { user?: { role?: string } })?.user;
-      if (!user || !['ADMIN', 'EDITOR'].includes(String(user.role))) {
+      const currentRole = String(user?.role ?? '');
+      setRole(currentRole);
+      if (!['ADMIN', 'EDITOR'].includes(currentRole)) {
         throw new Error('Seu perfil não possui permissão para disparar automações.');
       }
 
-      const response = await fetch(`${apiUrl}/api/v1/offers?includeUntracked=true&minDiscount=50&limit=12`);
+      const [response] = await Promise.all([
+        fetch(`${apiUrl}/api/v1/offers?includeUntracked=true&minDiscount=50&limit=12`),
+        loadChannels(currentRole)
+      ]);
       if (!response.ok) throw new Error('Não foi possível carregar as ofertas.');
       const data = await response.json() as { offers?: Offer[] };
       setOffers(data.offers ?? []);
@@ -69,6 +98,37 @@ export function AutomationDock() {
     const nextOpen = !open;
     setOpen(nextOpen);
     if (nextOpen) await loadOffers();
+  }
+
+  async function addGroup() {
+    if (!groupName.trim() || !groupNumber.trim()) {
+      setMessage('Informe o nome e o ID/número do grupo WhatsApp.');
+      return;
+    }
+    setSavingGroup(true);
+    setMessage('');
+    try {
+      await authenticatedFetch('/dispatch/channels', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: groupName.trim(),
+          type: 'evolution',
+          isActive: true,
+          config: {
+            number: groupNumber.trim(),
+            audience: groupAudience
+          }
+        })
+      });
+      setGroupName('');
+      setGroupNumber('');
+      setMessage('Grupo WhatsApp cadastrado e ativado para automações.');
+      await loadChannels('ADMIN');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Falha ao cadastrar grupo WhatsApp.');
+    } finally {
+      setSavingGroup(false);
+    }
   }
 
   async function runAutomation(offer: Offer) {
@@ -117,6 +177,30 @@ export function AutomationDock() {
             <button className="ghost-button" type="button" onClick={() => setOpen(false)} aria-label="Fechar automação">×</button>
           </header>
           <p>Afiliamos somente quando existe link oficial/verificado, geramos a copy e enviamos aos canais WhatsApp ativos permitidos.</p>
+
+          {role === 'ADMIN' ? (
+            <section className="automation-groups" aria-label="Grupos WhatsApp">
+              <div className="automation-section-heading">
+                <div>
+                  <strong>Grupos WhatsApp</strong>
+                  <small>{channels.filter((channel) => channel.isActive).length} ativo(s)</small>
+                </div>
+              </div>
+              <div className="automation-group-form">
+                <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="Nome do grupo" maxLength={80} />
+                <input value={groupNumber} onChange={(event) => setGroupNumber(event.target.value)} placeholder="ID do grupo ou número" maxLength={160} />
+                <select value={groupAudience} onChange={(event) => setGroupAudience(event.target.value as 'public' | 'private')}>
+                  <option value="public">Grupo público</option>
+                  <option value="private">Grupo privado</option>
+                </select>
+                <button type="button" onClick={() => void addGroup()} disabled={savingGroup}>
+                  {savingGroup ? 'Salvando...' : 'Adicionar grupo'}
+                </button>
+              </div>
+              <small className="automation-policy-note">Para ofertas do Mercado Livre, somente canais públicos declarados são liberados.</small>
+            </section>
+          ) : null}
+
           <button className="ghost-button automation-refresh" type="button" onClick={() => void loadOffers()} disabled={loading}>
             {loading ? 'Atualizando...' : 'Atualizar ofertas'}
           </button>
