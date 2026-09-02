@@ -25,12 +25,19 @@ describe('validação de links afiliados', () => {
     assert.ok(result.affiliateVerifiedAt);
   });
 
-  test('gera link interno rastreavel da plataforma', () => {
+  test('nao usa link interno como afiliacao quando links verificados sao obrigatorios', () => {
     assert.equal(
       createInternalAffiliateLink('https://api-ofertas.r2rmarketingdigital.com.br/base?x=1', 'offer-1'),
+      undefined
+    );
+  });
+
+  test('gera redirect interno somente quando o modo nao verificado e explicitamente permitido', () => {
+    assert.equal(
+      createInternalAffiliateLink('https://api-ofertas.r2rmarketingdigital.com.br/base?x=1', 'offer-1', true),
       'https://api-ofertas.r2rmarketingdigital.com.br/r/offer-1'
     );
-    assert.equal(createInternalAffiliateLink('ftp://api-ofertas.r2rmarketingdigital.com.br', 'offer-1'), undefined);
-    assert.equal(createInternalAffiliateLink('url-invalida', 'offer-1'), undefined);
+    assert.equal(createInternalAffiliateLink('ftp://api-ofertas.r2rmarketingdigital.com.br', 'offer-1', true), undefined);
+    assert.equal(createInternalAffiliateLink('url-invalida', 'offer-1', true), undefined);
   });
 });

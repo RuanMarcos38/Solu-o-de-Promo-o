@@ -61,6 +61,10 @@ function decodeHtml(value: string) {
     .replace(/&#x([\da-f]+);/gi, (_match, code) => String.fromCharCode(Number.parseInt(code, 16)));
 }
 
+function stripHtml(value: string) {
+  return decodeHtml(value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+}
+
 function extractNextData(html: string): MercadoLivreOfferPageData | undefined {
   const script = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/i)?.[1];
   const nordicScript = html.match(/<script id="__NORDIC_RENDERING_CTX__"[^>]*>([\s\S]*?)<\/script>/i)?.[1];
@@ -121,9 +125,10 @@ function imageFromPictureId(pictureId: string | undefined) {
 
 function normalizeProductUrl(rawUrl: string | undefined, urlParams?: string, urlFragments?: string) {
   if (!rawUrl) return undefined;
-  const withProtocol = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+  const withProtocol = rawUrl.startsWith('http') ? rawUrl : rawUrl.startsWith('/') ? `https://www.mercadolivre.com.br${rawUrl}` : `https://${rawUrl}`;
   try {
     const parsed = new URL(decodeHtml(withProtocol));
+    if (!/mercadolivre\.com\.br$|mercadolivre\.com$|mercado\.li$/i.test(parsed.hostname)) return undefined;
     if (urlParams) {
       const params = new URLSearchParams(decodeHtml(urlParams).replace(/^\?/, ''));
       params.forEach((value, key) => parsed.searchParams.set(key, value));
@@ -182,6 +187,84 @@ function normalizeMercadoLivreOfferPageItem(item: MercadoLivreOfferPageItem): Om
     rating,
     freeShipping: /frete\s+gr[áa]tis/i.test(shippingText)
   };
+}
+
+function parseMoneyContainers(block: string) {
+  const amountStarts = [...block.matchAll(/<(?:span|div)[^>]*class="([^"]*)"[^>]*>/gi)]
+    .filter((match) => (match[1] ?? '').split(/\s+/).includes('andes-money-amount'))
+    .map((match) => ({ index: match.index ?? 0, className: match[1] ?? '' }));
+  const amounts: Array<{ value: number; previous: boolean }> = [];
+
+  for (let index = 0; index < amountStarts.length; index += 1) {
+    const current = amountStarts[index];
+    const nextStart = amountStarts[index + 1]?.index ?? Math.min(block.length, current.index + 1800);
+    const body = block.slice(current.index, nextStart);
+    const fraction = stripHtml(body.match(/andes-money-amount__fraction[^>]*>([^<]+)/i)?.[1] ?? '');
+    const cents = stripHtml(body.match(/andes-money-amount__cents[^>]*>([^<]+)/i)?.[1] ?? '');
+    const normalized = `${fraction.replace(/\D/g, '')}${cents ? `.${cents.replace(/\D/g, '').slice(0, 2)}` : ''}`;
+    const value = Number(normalized);
+    if (Number.isFinite(value) && value > 0) {
+      amounts.push({ value, previous: /previous|original/i.test(current.className) });
+    }
+  }
+  return amounts;
+}
+
+function externalIdFromProductUrl(productUrl: string) {
+  const match = productUrl.match(/\bMLB-?(\d{6,})\b/i) ?? productUrl.match(/\/p\/(MLB\d{6,})/i);
+  if (!match) return undefined;
+  return String(match[1]).toUpperCase().startsWith('MLB') ? String(match[1]).toUpperCase() : `MLB${match[1]}`;
+}
+
+function searchCardBlocks(html: string) {
+  const starts = [...html.matchAll(/<(?:li|div)[^>]*class="[^"]*(?:ui-search-layout__item|poly-card)[^"]*"[^>]*>/gi)].map((match) => match.index ?? 0);
+  return starts.map((start, index) => html.slice(start, starts[index + 1] ?? Math.min(html.length, start + 25_000)));
+}
+
+export function parseMercadoLivreSearchPage(html: string) {
+  const offers: Array<Omit<NormalizedOffer, 'score'>> = [];
+  const seen = new Set<string>();
+
+  for (const block of searchCardBlocks(html)) {
+    const titleAnchor = block.match(/<a[^>]*(?:class="[^"]*(?:poly-component__title|ui-search-link)[^"]*"[^>]*)href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i)
+      ?? block.match(/<a[^>]*href="([^"]+)"[^>]*class="[^"]*(?:poly-component__title|ui-search-link)[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+    const productUrl = normalizeProductUrl(titleAnchor?.[1]);
+    const title = stripHtml(titleAnchor?.[2] ?? block.match(/aria-label="([^"]{8,})"/i)?.[1] ?? '');
+    const externalId = productUrl ? externalIdFromProductUrl(productUrl) : undefined;
+    if (!productUrl || !externalId || !title || seen.has(externalId)) continue;
+
+    const amounts = parseMoneyContainers(block);
+    const currentPrice = amounts.find((amount) => !amount.previous)?.value;
+    const explicitDiscount = Number(block.match(/(\d{1,2}(?:[,.]\d+)?)\s*%\s*(?:OFF|de desconto)/i)?.[1]?.replace(',', '.'));
+    let originalPrice = amounts.find((amount) => amount.previous && (!currentPrice || amount.value > currentPrice))?.value;
+    if (!originalPrice && currentPrice && Number.isFinite(explicitDiscount) && explicitDiscount > 0 && explicitDiscount < 100) {
+      originalPrice = Number((currentPrice / (1 - explicitDiscount / 100)).toFixed(2));
+    }
+    if (!currentPrice || currentPrice <= 0) continue;
+
+    const image = decodeHtml(block.match(/<(?:img|source)[^>]*(?:data-src|src)="([^"]+(?:mlstatic|http2)[^"]*)"/i)?.[1] ?? '');
+    const sellerName = stripHtml(block.match(/(?:poly-component__seller|ui-search-official-store-label)[^>]*>([\s\S]*?)<\//i)?.[1] ?? '');
+    const discountPercent = Number.isFinite(explicitDiscount) ? explicitDiscount : calculateDiscount(currentPrice, originalPrice);
+    const freeShipping = /frete\s+gr[áa]tis/i.test(stripHtml(block));
+
+    offers.push({
+      externalId,
+      marketplace: 'mercadolivre',
+      title,
+      normalizedTitle: normalizeTitle(title),
+      currentPrice,
+      originalPrice,
+      discountPercent,
+      imageUrl: image || undefined,
+      productUrl,
+      affiliateEligible: false,
+      sellerName: sellerName || undefined,
+      freeShipping
+    });
+    seen.add(externalId);
+  }
+
+  return offers;
 }
 
 function offerMatchesKeyword(offer: Omit<NormalizedOffer, 'score'>, keyword: string) {
@@ -244,7 +327,8 @@ async function discoverMercadoLivreCategory(keyword: string) {
       headers: {
         Accept: 'application/json',
         'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-        'User-Agent': 'ZeniteOfertas/1.0 (+https://ofertas.r2rmarketingdigital.com.br)'
+        'User-Agent': 'ZeniteOfertas/1.0 (+https://ofertas.r2rmarketingdigital.com.br)',
+        ...(config.mercadoLivreAccessToken ? { Authorization: `Bearer ${config.mercadoLivreAccessToken}` } : {})
       }
     });
     if (!response.ok) return undefined;
@@ -272,38 +356,70 @@ async function searchMercadoLivreOfferPage(input: SearchInput) {
   const offers = parseMercadoLivreOfferPage(await response.text());
   const matchedOffers = offers.filter((offer) => offerMatchesKeyword(offer, input.keyword));
   const relevantOffers = matchedOffers.length > 0 ? matchedOffers : categoryId ? offers : [];
-  if (relevantOffers.length === 0) throw new Error('Mercado Livre não retornou produtos legíveis para esta busca');
+  if (relevantOffers.length === 0) throw new Error('pagina de ofertas sem produtos legiveis');
   return resolveOffers(relevantOffers.slice(0, Math.min(Math.max(input.limit ?? config.maxResultsPerSource, 1), 48)));
+}
+
+async function searchMercadoLivreListingPage(input: SearchInput) {
+  const slug = normalizeTitle(input.keyword).replace(/\s+/g, '-');
+  const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(slug)}`;
+  const response = await fetchExternal(url, {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      'Cache-Control': 'no-cache',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
+    }
+  });
+  if (!response.ok) throw new Error(`Mercado Livre lista retornou HTTP ${response.status}`);
+  const offers = parseMercadoLivreSearchPage(await response.text()).filter((offer) => offerMatchesKeyword(offer, input.keyword));
+  if (offers.length === 0) throw new Error('pagina de busca sem produtos legiveis');
+  return resolveOffers(offers.slice(0, Math.min(Math.max(input.limit ?? config.maxResultsPerSource, 1), 48)));
+}
+
+async function searchMercadoLivrePublicFallbacks(input: SearchInput) {
+  const errors: string[] = [];
+  try {
+    return await searchMercadoLivreOfferPage(input);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : 'falha na pagina de ofertas');
+  }
+  try {
+    return await searchMercadoLivreListingPage(input);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : 'falha na pagina de busca');
+  }
+  throw new Error(`Mercado Livre nao retornou produtos legiveis. ${errors.join(' | ')}`);
 }
 
 export const mercadoLivreAdapter: MarketplaceAdapter = {
   name: 'mercadolivre',
   async search(input: SearchInput): Promise<NormalizedOffer[]> {
-    if (config.requireVerifiedAffiliateLinks && !config.affiliateResolverUrl) {
-      // A busca imediata pode exibir ofertas públicas; a distribuição continua restrita a links verificados.
-    }
     const params = new URLSearchParams({
       q: input.keyword,
       limit: String(input.limit ?? config.maxResultsPerSource)
     });
 
     const url = `https://api.mercadolibre.com/sites/${encodeURIComponent(config.mercadoLivreSiteId)}/search?${params.toString()}`;
-    const response = await fetchExternal(url, {
-      headers: {
-        Accept: 'application/json',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-        'User-Agent': 'ZeniteOfertas/1.0 (+https://ofertas.r2rmarketingdigital.com.br)',
-        ...(config.mercadoLivreAccessToken ? { Authorization: `Bearer ${config.mercadoLivreAccessToken}` } : {})
-      }
-    });
+    try {
+      const response = await fetchExternal(url, {
+        headers: {
+          Accept: 'application/json',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+          'User-Agent': 'ZeniteOfertas/1.0 (+https://ofertas.r2rmarketingdigital.com.br)',
+          ...(config.mercadoLivreAccessToken ? { Authorization: `Bearer ${config.mercadoLivreAccessToken}` } : {})
+        }
+      });
 
-    if (!response.ok) {
-      return searchMercadoLivreOfferPage(input);
+      if (response.ok) {
+        const data = (await response.json()) as MercadoLivreResponse;
+        const results = Array.isArray(data.results) ? data.results : [];
+        if (results.length > 0) return resolveOffers(results.map(normalizeMercadoLivreItem));
+      }
+    } catch {
+      // Continua para os fallbacks públicos. Distribuição permanece bloqueada sem link oficial/verificado.
     }
 
-    const data = (await response.json()) as MercadoLivreResponse;
-
-    const results = Array.isArray(data.results) ? data.results : [];
-    return resolveOffers(results.map(normalizeMercadoLivreItem));
+    return searchMercadoLivrePublicFallbacks(input);
   }
 };

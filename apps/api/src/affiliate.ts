@@ -43,7 +43,15 @@ function createAmazonAffiliateLink(productUrl: string) {
   }
 }
 
-export function createInternalAffiliateLink(origin: string, offerId: string) {
+export function createInternalAffiliateLink(
+  origin: string,
+  offerId: string,
+  allowUnverified = !config.requireVerifiedAffiliateLinks
+) {
+  // Um redirect interno ajuda a medir cliques, mas nao transforma o produto em afiliado.
+  // Quando links verificados sao obrigatorios, o fallback precisa permanecer bloqueado.
+  if (!allowUnverified) return undefined;
+
   try {
     const parsed = new URL(origin);
     if (!['http:', 'https:'].includes(parsed.protocol)) return undefined;

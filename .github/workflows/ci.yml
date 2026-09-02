@@ -101,7 +101,8 @@ jobs:
       - name: Capture production dependency audit
         run: |
           set +e
-          npm audit --omit=dev --audit-level=high --json > npm-audit.json
+          # Prisma CLI fica restrito à imagem efêmera de migration. O runtime final usa somente dependências de produção não opcionais.
+          npm audit --omit=dev --omit=optional --audit-level=high --json > npm-audit.json
           echo $? > npm-audit-exit-code.txt
           exit 0
 

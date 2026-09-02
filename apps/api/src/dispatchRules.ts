@@ -46,12 +46,11 @@ export function checkMarketplaceChannelPolicy(
     return { allowed: true } as const;
   }
 
-  if (channelType === 'whatsapp' || channelType === 'evolution') {
-    return { allowed: false, reason: 'mercado_livre_closed_group_restricted' } as const;
-  }
-
-  if (channelType === 'telegram' && channelConfig.audience !== 'public') {
-    return { allowed: false, reason: 'mercado_livre_requires_public_channel' } as const;
+  const audience = String(channelConfig.audience ?? '').trim().toLowerCase();
+  if (channelType === 'whatsapp' || channelType === 'evolution' || channelType === 'telegram') {
+    if (audience !== 'public') {
+      return { allowed: false, reason: 'mercado_livre_requires_public_channel' } as const;
+    }
   }
 
   return { allowed: true } as const;

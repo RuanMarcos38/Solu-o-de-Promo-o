@@ -1,0 +1,58 @@
+.automation-groups {
+  display: grid;
+  gap: 9px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #e8e5fb;
+  border-radius: 11px;
+  background: #faf9ff;
+}
+
+.automation-section-heading,
+.automation-section-heading > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.automation-section-heading > div {
+  width: 100%;
+}
+
+.automation-section-heading strong {
+  color: #2b2e3b;
+  font-size: .82rem;
+}
+
+.automation-section-heading small,
+.automation-policy-note {
+  color: #737887;
+  font-size: .7rem;
+}
+
+.automation-group-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.automation-group-form input,
+.automation-group-form select,
+.automation-group-form button {
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  font-size: .76rem;
+}
+
+.automation-policy-note {
+  display: block;
+  line-height: 1.35;
+}
+
+@media (max-width: 520px) {
+  .automation-group-form {
+    grid-template-columns: 1fr;
+  }
+}

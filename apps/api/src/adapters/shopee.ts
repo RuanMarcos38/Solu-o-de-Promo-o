@@ -31,6 +31,13 @@ type ShopeeResponse = {
 
 type ApifyShopeeItem = Record<string, unknown>;
 
+type ShopeePublicSearchResponse = {
+  error?: number | string;
+  error_msg?: string;
+  items?: Array<Record<string, unknown>>;
+  data?: { items?: Array<Record<string, unknown>> };
+};
+
 const productOfferQuery = `query ProductOffers($keyword: String!, $page: Int!, $limit: Int!) {
   productOfferV2(keyword: $keyword, page: $page, limit: $limit) {
     nodes {
@@ -106,7 +113,7 @@ function booleanValue(source: unknown, paths: string[]) {
 }
 
 function shopeeProductIdsFromUrl(productUrl?: string) {
-  const match = productUrl?.match(/(?:product-)?i\.(\d+)\.(\d+)/i);
+  const match = productUrl?.match(/(?:product-)?i\.(\d+)\.(\d+)/i) ?? productUrl?.match(/\/product\/(\d+)\/(\d+)/i);
   return match ? { shopId: match[1], itemId: match[2] } : {};
 }
 
@@ -188,7 +195,7 @@ export function normalizeShopeeApifyItem(item: ApifyShopeeItem): NormalizedOffer
   ).trim();
   const shopId = String(pickValue(item, ['shopId', 'shopid', 'shop_id']) ?? idsFromUrl.shopId ?? '').trim();
   const title = stringValue(item, ['title', 'name', 'productName', 'product_name', 'itemName', 'item_name']);
-  const resolvedUrl = productUrl || (shopId && externalId ? `https://shopee.com.br/product-i.${shopId}.${externalId}` : undefined);
+  const resolvedUrl = productUrl || (shopId && externalId ? `https://shopee.com.br/product/${shopId}/${externalId}` : undefined);
   const currentPrice = moneyValue(pickValue(item, [
     'price',
     'priceMin',
@@ -249,6 +256,15 @@ export function normalizeShopeeApifyItem(item: ApifyShopeeItem): NormalizedOffer
   return { ...base, score: calculateScore(base) };
 }
 
+export function normalizeShopeePublicItem(item: Record<string, unknown>): NormalizedOffer | null {
+  const source = (item.item_basic && typeof item.item_basic === 'object')
+    ? item.item_basic as Record<string, unknown>
+    : (item.item_data && typeof item.item_data === 'object')
+      ? item.item_data as Record<string, unknown>
+      : item;
+  return normalizeShopeeApifyItem(source);
+}
+
 export function hasShopeeOfficialCredentials() {
   return Boolean(config.shopeeAppId && config.shopeeSecret && config.shopeeEndpoint);
 }
@@ -288,6 +304,38 @@ function extractApifyItems(payload: unknown): ApifyShopeeItem[] {
   return collection.filter((item): item is ApifyShopeeItem => Boolean(item) && typeof item === 'object');
 }
 
+async function searchShopeePublic(input: SearchInput) {
+  const limit = Math.min(Math.max(input.limit ?? config.maxResultsPerSource, 1), 60);
+  const url = new URL('https://shopee.com.br/api/v4/search/search_items');
+  url.searchParams.set('by', 'relevancy');
+  url.searchParams.set('keyword', input.keyword);
+  url.searchParams.set('limit', String(limit));
+  url.searchParams.set('newest', '0');
+  url.searchParams.set('order', 'desc');
+  url.searchParams.set('page_type', 'search');
+  url.searchParams.set('scenario', 'PAGE_GLOBAL_SEARCH');
+  url.searchParams.set('version', '2');
+
+  const response = await fetchExternal(url.toString(), {
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      Referer: `https://shopee.com.br/search?keyword=${encodeURIComponent(input.keyword)}`,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
+    }
+  });
+
+  if (!response.ok) throw new Error(`Shopee busca publica retornou HTTP ${response.status}`);
+  const payload = await response.json() as ShopeePublicSearchResponse;
+  if (payload.error && String(payload.error) !== '0') {
+    throw new Error(`Shopee busca publica bloqueada: ${payload.error_msg || payload.error}`);
+  }
+  const items = payload.items ?? payload.data?.items ?? [];
+  const offers = items.map(normalizeShopeePublicItem).filter((item): item is NormalizedOffer => Boolean(item));
+  if (offers.length === 0) throw new Error('Shopee busca publica nao retornou produtos legiveis');
+  return offers;
+}
+
 async function searchShopeeApify(input: SearchInput) {
   if (!config.apifyToken || !config.apifyApiBaseUrl) throw new Error('Apify sem token ou endpoint configurado no EasyPanel.');
 
@@ -310,9 +358,11 @@ async function searchShopeeApify(input: SearchInput) {
 
   if (!response.ok) throw new Error(apifyShopeeHttpError(response.status));
   const payload = await response.json();
-  return extractApifyItems(payload)
+  const offers = extractApifyItems(payload)
     .map(normalizeShopeeApifyItem)
     .filter((item): item is NormalizedOffer => Boolean(item));
+  if (offers.length === 0) throw new Error('Apify Shopee nao retornou produtos legiveis');
+  return offers;
 }
 
 async function searchShopeeOfficial(input: SearchInput) {
@@ -352,17 +402,32 @@ async function searchShopeeOfficial(input: SearchInput) {
 export const shopeeAdapter: MarketplaceAdapter = {
   name: 'shopee',
   async search(input: SearchInput): Promise<NormalizedOffer[]> {
+    const errors: string[] = [];
+
     if (hasShopeeOfficialCredentials()) {
       try {
         const officialOffers = await searchShopeeOfficial(input);
-        if (officialOffers.length > 0 || !hasShopeeApifyFallback()) return officialOffers;
+        if (officialOffers.length > 0) return officialOffers;
+        errors.push('Shopee Affiliate Open API retornou lista vazia');
       } catch (error) {
-        if (!hasShopeeApifyFallback()) throw error;
+        errors.push(error instanceof Error ? error.message : 'falha na API oficial da Shopee');
       }
     }
 
-    if (hasShopeeApifyFallback()) return searchShopeeApify(input);
+    try {
+      return await searchShopeePublic(input);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : 'falha na busca publica da Shopee');
+    }
 
-    throw new Error('Shopee precisa de APIFY_TOKEN no EasyPanel para busca publica via Apify, ou SHOPEE_APP_ID e SHOPEE_SECRET para a API oficial.');
+    if (hasShopeeApifyFallback()) {
+      try {
+        return await searchShopeeApify(input);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : 'falha no fallback Apify');
+      }
+    }
+
+    throw new Error(`Shopee indisponivel para descoberta. ${errors.join(' | ')}`);
   }
 };
