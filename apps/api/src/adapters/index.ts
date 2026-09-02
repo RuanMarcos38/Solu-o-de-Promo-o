@@ -35,8 +35,8 @@ export function getMarketplaceStatuses() {
           ? 'Busca oficial e resolvedor autorizado de afiliacao configurados.'
           : 'Busca oficial pronta. Para comissao automatica, conecte o resolvedor autorizado do programa de afiliados.'
         : mercadoLivreAffiliateLinks
-          ? 'Busca resiliente ativa e resolvedor autorizado de afiliacao configurado.'
-          : 'Busca resiliente ativa. Para comissao automatica, conecte OAuth/access token e resolvedor autorizado do programa.'
+          ? 'Busca publica ativa com fallback resiliente e resolvedor autorizado de afiliacao configurado.'
+          : 'Busca publica ativa com fallback resiliente. Para comissao automatica, conecte OAuth/access token e resolvedor autorizado do programa.'
     },
     {
       marketplace: 'amazon',
