@@ -6,6 +6,10 @@ import './styles.css';
 import './system-dashboard.css';
 import './automation-dock.css';
 import './automation-groups.css';
+import './zenite-enterprise.css';
+
+document.documentElement.lang = 'pt-BR';
+localStorage.setItem('promo_language', 'pt-BR');
 
 const rootElement = document.getElementById('root')!;
 
