@@ -521,7 +521,9 @@ export function App() {
       });
     });
     socket.on('stats:update', (nextStats: Stats) => setStats(nextStats));
-    return () => socket.disconnect();
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   useEffect(() => {
