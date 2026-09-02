@@ -38,6 +38,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      target: migrate
     env_file:
       - .env
     environment:
@@ -54,6 +55,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      target: runner
     restart: unless-stopped
     init: true
     env_file:
@@ -82,6 +84,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      target: runner
     restart: unless-stopped
     init: true
     env_file:
