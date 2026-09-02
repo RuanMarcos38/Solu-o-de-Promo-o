@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { io } from 'socket.io-client';
 
 type Offer = {
@@ -29,20 +29,7 @@ type DispatchChannel = { id: string; name: string; type: string; isActive: boole
 type User = { id: string; name: string; email: string; role: string; isActive?: boolean };
 type DispatchLog = { id: string; channel: string; status: string; error?: string; createdAt: string; offer?: { title: string; marketplace: string; currentPrice: number } | null };
 type MarketplaceStatus = { marketplace: string; enabled: boolean; configured: boolean; affiliateLinks: boolean; detail: string };
-type SystemStatus = {
-  status: string;
-  database: string;
-  redis: string;
-  queue: Record<string, number>;
-  totals: {
-    offers: number;
-    activeSources: number;
-    activeAlerts: number;
-    activeChannels: number;
-    sentDispatches: number;
-    failedDispatches: number;
-  };
-};
+
 type PlatformSettings = {
   branding: { platformName: string; timezone: string; locale: 'pt-BR'; currency: 'BRL' };
   collection: { automaticEnabled: boolean; intervalSeconds: number; maxResultsPerSource: number };
@@ -50,6 +37,7 @@ type PlatformSettings = {
   dispatch: { automaticEnabled: boolean; maxOffersPerCycle: number };
   publicApi: { enabled: boolean; defaultPageSize: number; maxPageSize: number };
 };
+
 type PlatformSettingsRecord = {
   settings: PlatformSettings;
   version: number;
@@ -58,111 +46,47 @@ type PlatformSettingsRecord = {
   source: 'database' | 'environment-defaults';
 };
 
-type Language = 'pt-BR' | 'en-US' | 'es-ES';
-type ViewKey = 'dashboard' | 'offers' | 'marketplaces' | 'operation' | 'settings';
+type ViewKey = 'dashboard' | 'offers' | 'marketplaces' | 'automation' | 'settings';
 
 const minimumDiscountPercent = 50;
 const productionApiUrl = 'https://api-ofertas.r2rmarketingdigital.com.br';
 const apiUrl = (import.meta.env.VITE_API_URL ?? productionApiUrl).replace(/\/$/, '');
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-
-const apiUnavailableMessage = 'A API está indisponível no momento. Verifique o serviço api no EasyPanel e tente novamente.';
-
-const languages: Record<Language, { label: string; short: string; copy: Record<string, string> }> = {
-  'pt-BR': {
-    label: 'Português do Brasil',
-    short: 'PT-BR',
-    copy: {
-      badge: 'Operação online',
-      logout: 'Sair',
-      hero: 'Central SaaS para buscar ofertas qualificadas, gerar links afiliados e distribuir oportunidades com controle operacional.',
-      filter: 'Filtrar',
-      searchNow: 'Buscar agora',
-      searching: 'Buscando...',
-      refresh: 'Sincronizar dados',
-      result: 'Lista de ofertas',
-      offersFound: 'Ofertas encontradas',
-      emptyTitle: 'Nenhuma oferta na tela ainda',
-      emptyText: 'Use "Buscar agora" para consultar o marketplace e carregar os resultados imediatamente.',
-      affiliateLink: 'Ver oferta afiliada',
-      affiliateProduct: 'Afiliar produto',
-      copyAffiliate: 'Copiar link',
-      sendWhatsapp: 'Enviar WhatsApp',
-      productLink: 'Ver oferta',
-      untracked: 'Link não rastreado',
-      approved: 'Ofertas aprovadas',
-      bestScore: 'Melhor score',
-      bestDiscount: 'Maior desconto',
-      ready: 'Pronto',
-      pending: 'Configuração pendente',
-      disabled: 'Desativado'
-    }
-  },
-  'en-US': {
-    label: 'English',
-    short: 'EN',
-    copy: {
-      badge: 'Online operation',
-      logout: 'Sign out',
-      hero: 'SaaS workspace to find qualified offers, create affiliate links, and distribute opportunities with operational control.',
-      filter: 'Filter',
-      searchNow: 'Search now',
-      searching: 'Searching...',
-      refresh: 'Sync data',
-      result: 'Offer list',
-      offersFound: 'Offers found',
-      emptyTitle: 'No offers on screen yet',
-      emptyText: 'Use "Search and show now" to query the marketplace and load results immediately.',
-      affiliateLink: 'View affiliate offer',
-      affiliateProduct: 'Create affiliate link',
-      copyAffiliate: 'Copy link',
-      sendWhatsapp: 'Send WhatsApp',
-      productLink: 'View offer',
-      untracked: 'Untracked link',
-      approved: 'Approved offers',
-      bestScore: 'Best score',
-      bestDiscount: 'Biggest discount',
-      ready: 'Ready',
-      pending: 'Configuration pending',
-      disabled: 'Disabled'
-    }
-  },
-  'es-ES': {
-    label: 'Español',
-    short: 'ES',
-    copy: {
-      badge: 'Operación online',
-      logout: 'Salir',
-      hero: 'Espacio SaaS para buscar ofertas calificadas, crear enlaces afiliados y distribuir oportunidades con control operativo.',
-      filter: 'Filtrar',
-      searchNow: 'Buscar ahora',
-      searching: 'Buscando...',
-      refresh: 'Sincronizar datos',
-      result: 'Lista de ofertas',
-      offersFound: 'Ofertas encontradas',
-      emptyTitle: 'Todavía no hay ofertas en pantalla',
-      emptyText: 'Usa "Buscar y mostrar ahora" para consultar el marketplace y cargar los resultados de inmediato.',
-      affiliateLink: 'Ver oferta afiliada',
-      affiliateProduct: 'Afiliar producto',
-      copyAffiliate: 'Copiar enlace',
-      sendWhatsapp: 'Enviar WhatsApp',
-      productLink: 'Ver oferta',
-      untracked: 'Enlace no rastreado',
-      approved: 'Ofertas aprobadas',
-      bestScore: 'Mejor score',
-      bestDiscount: 'Mayor descuento',
-      ready: 'Listo',
-      pending: 'Configuración pendiente',
-      disabled: 'Desactivado'
-    }
-  }
-};
+const apiUnavailableMessage = 'A API está indisponível no momento. Verifique o serviço no EasyPanel e tente novamente.';
 
 const channelExamples: Record<string, string> = {
   webhook: '{"url":"https://seu-webhook.com/ofertas"}',
   telegram: '{"botToken":"TOKEN_DO_BOT","chatId":"ID_DO_CANAL","audience":"public"}',
   whatsapp: '{"provider":"evolution","baseUrl":"https://evolution.seudominio.com","apiKey":"SUA_API_KEY","instanceName":"minha-instancia","number":"5547999999999","audience":"private"}',
   evolution: '{"baseUrl":"https://evolution.seudominio.com","apiKey":"SUA_API_KEY","instanceName":"minha-instancia","number":"5547999999999","audience":"private"}'
+};
+
+const viewCopy: Record<ViewKey, { eyebrow: string; title: string; description: string }> = {
+  dashboard: {
+    eyebrow: 'Visão geral',
+    title: 'Dashboard',
+    description: 'Indicadores comerciais das ofertas qualificadas e do desempenho da curadoria.'
+  },
+  offers: {
+    eyebrow: 'Catálogo comercial',
+    title: 'Ofertas',
+    description: 'Pesquise oportunidades, gere links afiliados e distribua promoções pelos canais cadastrados.'
+  },
+  marketplaces: {
+    eyebrow: 'Integrações',
+    title: 'Marketplaces',
+    description: 'Gerencie as plataformas disponíveis para busca e afiliação de produtos.'
+  },
+  automation: {
+    eyebrow: 'Automação',
+    title: 'Regras e distribuição',
+    description: 'Configure fontes, alertas, canais de envio, usuários e histórico de distribuição.'
+  },
+  settings: {
+    eyebrow: 'Administração',
+    title: 'Configurações',
+    description: 'Ajuste parâmetros comerciais e regras da plataforma sem alterar o código.'
+  }
 };
 
 export function App() {
@@ -182,7 +106,6 @@ export function App() {
   const [channels, setChannels] = useState<DispatchChannel[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [logs, setLogs] = useState<DispatchLog[]>([]);
-  const [system, setSystem] = useState<SystemStatus | null>(null);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettingsRecord | null>(null);
   const [marketplaceStatuses, setMarketplaceStatuses] = useState<MarketplaceStatus[]>([]);
   const [channelConfig, setChannelConfig] = useState(channelExamples.webhook);
@@ -193,27 +116,26 @@ export function App() {
   const [statusMessage, setStatusMessage] = useState('');
   const [offerActionId, setOfferActionId] = useState('');
   const [activeView, setActiveView] = useState<ViewKey>('dashboard');
-  const [language, setLanguage] = useState<Language>(() => {
-    const saved = localStorage.getItem('promo_language') as Language | null;
-    return saved && saved in languages ? saved : 'pt-BR';
-  });
 
   const isAdmin = currentUser?.role === 'ADMIN';
   const canEdit = currentUser?.role === 'ADMIN' || currentUser?.role === 'EDITOR';
   const statusIsError = /erro|inválid|indisponível|falha|failed|não foi possível/i.test(statusMessage);
-  const t = languages[language].copy;
   const platformName = platformSettings?.settings.branding.platformName ?? 'Zenite Ofertas';
   const effectiveMinDiscount = Math.max(minimumDiscountPercent, Number(minDiscount) || minimumDiscountPercent);
-  const displayedOffers = offers.filter((offer) => (offer.discountPercent ?? 0) >= effectiveMinDiscount);
+  const displayedOffers = useMemo(
+    () => offers.filter((offer) => (offer.discountPercent ?? 0) >= effectiveMinDiscount),
+    [offers, effectiveMinDiscount]
+  );
   const marketplaceCount = Object.keys(stats.marketplaces ?? {}).length;
   const averageVisibleDiscount = displayedOffers.length
     ? Number((displayedOffers.reduce((total, offer) => total + (offer.discountPercent ?? 0), 0) / displayedOffers.length).toFixed(1))
     : 0;
+  const currentView = viewCopy[activeView];
   const navItems: Array<{ key: ViewKey; label: string; adminOnly?: boolean }> = [
     { key: 'dashboard', label: 'Dashboard' },
-    { key: 'offers', label: 'Ofertas 50%+' },
+    { key: 'offers', label: 'Ofertas' },
     { key: 'marketplaces', label: 'Marketplaces' },
-    { key: 'operation', label: 'Operação' },
+    { key: 'automation', label: 'Automação' },
     { key: 'settings', label: 'Configurações', adminOnly: true }
   ];
 
@@ -226,25 +148,30 @@ export function App() {
     setChannels([]);
     setUsers([]);
     setLogs([]);
-    setSystem(null);
     setPlatformSettings(null);
   }
 
   async function apiFetch(path: string, options: RequestInit = {}) {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> | undefined) };
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> | undefined)
+    };
     if (token) headers.Authorization = `Bearer ${token}`;
+
     let response: Response;
     try {
       response = await fetch(`${apiUrl}${path}`, { ...options, headers });
     } catch {
       throw new Error(apiUnavailableMessage);
     }
+
     if (!response.ok) {
       if (response.status === 401) logout();
       if (response.status >= 500) throw new Error(apiUnavailableMessage);
       const data = await response.json().catch(() => null) as { message?: string } | null;
       throw new Error(data?.message || `Erro HTTP ${response.status}`);
     }
+
     return response;
   }
 
@@ -292,6 +219,7 @@ export function App() {
     if (marketplace) params.set('marketplace', marketplace);
     if (minDiscount) params.set('minDiscount', minDiscount);
     params.set('includeUntracked', 'true');
+
     try {
       const [offersResponse, statsResponse, marketplacesResponse] = await Promise.all([
         fetch(`${apiUrl}/api/v1/offers?${params.toString()}`),
@@ -299,6 +227,7 @@ export function App() {
         fetch(`${apiUrl}/api/v1/marketplaces`)
       ]);
       if (!offersResponse.ok || !statsResponse.ok || !marketplacesResponse.ok) throw new Error(apiUnavailableMessage);
+
       const offersData = await offersResponse.json();
       const statsData = await statsResponse.json();
       const marketplacesData = await marketplacesResponse.json();
@@ -320,9 +249,8 @@ export function App() {
         fetch(`${apiUrl}/api/v1/marketplaces`)
       ]);
       if (!statsResponse.ok || !marketplacesResponse.ok) throw new Error(apiUnavailableMessage);
-      const statsData = await statsResponse.json();
+      setStats(await statsResponse.json());
       const marketplacesData = await marketplacesResponse.json();
-      setStats(statsData);
       setMarketplaceStatuses(marketplacesData.marketplaces ?? []);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : apiUnavailableMessage);
@@ -347,22 +275,25 @@ export function App() {
     }
 
     if (isAdmin) {
-      const [channelsResponse, usersResponse, systemResponse, settingsResponse] = await Promise.all([
+      const [channelsResponse, usersResponse, settingsResponse] = await Promise.all([
         apiFetch('/dispatch/channels'),
         apiFetch('/admin/users'),
-        apiFetch('/admin/system'),
         apiFetch('/admin/settings')
       ]);
       setChannels((await channelsResponse.json()).channels ?? []);
       setUsers((await usersResponse.json()).users ?? []);
-      setSystem(await systemResponse.json());
       setPlatformSettings(await settingsResponse.json());
     } else {
       setChannels([]);
       setUsers([]);
-      setSystem(null);
       setPlatformSettings(null);
     }
+  }
+
+  async function syncOffers() {
+    setStatusMessage('');
+    await Promise.all([loadData(), loadAdminData().catch(() => undefined)]);
+    setStatusMessage('Dados atualizados.');
   }
 
   async function collectNow() {
@@ -378,7 +309,14 @@ export function App() {
         const data = await response.json().catch(() => null) as { message?: string } | null;
         throw new Error(data?.message || apiUnavailableMessage);
       }
-      const result = await response.json() as { offers?: Offer[]; approved?: Offer[]; approvedCount?: number; foundCount?: number; errors?: Array<{ error: string }> };
+
+      const result = await response.json() as {
+        offers?: Offer[];
+        approved?: Offer[];
+        approvedCount?: number;
+        foundCount?: number;
+        errors?: Array<{ error: string }>;
+      };
       const immediateOffers = result.offers ?? result.approved ?? [];
       const qualifiedImmediateOffers = immediateOffers.filter((offer) => (offer.discountPercent ?? 0) >= effectiveMinDiscount);
       let visibleCount = qualifiedImmediateOffers.length || result.approvedCount || 0;
@@ -465,28 +403,43 @@ export function App() {
   async function createSource() {
     await apiFetch('/admin/sources', {
       method: 'POST',
-      body: JSON.stringify({ name: `Fonte ${marketplace}`, marketplace, keywords: keyword.split(',').map((item) => item.trim()).filter(Boolean) })
+      body: JSON.stringify({
+        name: `Fonte ${marketplace}`,
+        marketplace,
+        keywords: keyword.split(',').map((item) => item.trim()).filter(Boolean)
+      })
     });
     setStatusMessage('Fonte criada.');
     await loadAdminData();
   }
 
   async function toggleSource(source: Source) {
-    await apiFetch(`/admin/sources/${source.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !source.isActive }) });
+    await apiFetch(`/admin/sources/${source.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ isActive: !source.isActive })
+    });
     await loadAdminData();
   }
 
   async function createAlert() {
     await apiFetch('/alerts', {
       method: 'POST',
-      body: JSON.stringify({ name: `Alerta ${keyword}`, keywords: keyword.split(',').map((item) => item.trim()).filter(Boolean), marketplaces: [marketplace], minDiscountPercent: effectiveMinDiscount })
+      body: JSON.stringify({
+        name: `Alerta ${keyword}`,
+        keywords: keyword.split(',').map((item) => item.trim()).filter(Boolean),
+        marketplaces: [marketplace],
+        minDiscountPercent: effectiveMinDiscount
+      })
     });
-    setStatusMessage('Alerta criado. A distribuição agora respeita alertas ativos.');
+    setStatusMessage('Alerta criado. A distribuição seguirá essa regra.');
     await loadAdminData();
   }
 
   async function toggleAlert(alert: AlertRule) {
-    await apiFetch(`/alerts/${alert.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !alert.isActive }) });
+    await apiFetch(`/alerts/${alert.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ isActive: !alert.isActive })
+    });
     await loadAdminData();
   }
 
@@ -508,7 +461,10 @@ export function App() {
   }
 
   async function toggleChannel(channel: DispatchChannel) {
-    await apiFetch(`/dispatch/channels/${channel.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !channel.isActive }) });
+    await apiFetch(`/dispatch/channels/${channel.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ isActive: !channel.isActive })
+    });
     await loadAdminData();
   }
 
@@ -525,7 +481,10 @@ export function App() {
   }
 
   async function toggleUser(user: User) {
-    await apiFetch(`/admin/users/${user.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !user.isActive }) });
+    await apiFetch(`/admin/users/${user.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ isActive: !user.isActive })
+    });
     await loadAdminData();
   }
 
@@ -540,13 +499,10 @@ export function App() {
     try {
       const response = await apiFetch('/admin/settings', {
         method: 'PUT',
-        body: JSON.stringify({
-          expectedVersion: platformSettings.version,
-          settings: platformSettings.settings
-        })
+        body: JSON.stringify({ expectedVersion: platformSettings.version, settings: platformSettings.settings })
       });
       setPlatformSettings(await response.json());
-      setStatusMessage('Configurações validadas e aplicadas. O agendamento do robô foi atualizado.');
+      setStatusMessage('Configurações aplicadas.');
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Erro ao salvar configurações.');
     } finally {
@@ -571,15 +527,13 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('promo_language', language);
-  }, [language]);
-
-  useEffect(() => {
     if (token && !currentUser) loadSessionUser().catch(() => undefined);
   }, [token]);
 
   useEffect(() => {
-    if (token && currentUser) loadAdminData().catch((error) => setStatusMessage(error instanceof Error ? error.message : 'Erro ao carregar painel.'));
+    if (token && currentUser) {
+      loadAdminData().catch((error) => setStatusMessage(error instanceof Error ? error.message : 'Erro ao carregar dados.'));
+    }
   }, [token, currentUser?.role]);
 
   if (!token) {
@@ -592,7 +546,7 @@ export function App() {
           </div>
           <span className="badge">Acesso administrativo</span>
           <h1>{platformName}</h1>
-          <p>Entre para administrar fontes, alertas, usuários, canais de distribuição e varreduras em tempo real.</p>
+          <p>Entre para administrar ofertas, afiliações, automações e canais de distribuição.</p>
           <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void loginNow(); }}>
             <label htmlFor="login-email">E-mail</label>
             <input id="login-email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="E-mail" type="email" inputMode="email" autoComplete="username" required />
@@ -613,7 +567,7 @@ export function App() {
           <span className="brand-mark" aria-hidden="true">ZO</span>
           <div>
             <strong>{platformName}</strong>
-            <span>Ofertas qualificadas a partir de {minimumDiscountPercent}%</span>
+            <span>Central de ofertas e afiliação</span>
           </div>
         </div>
         <div className="menu-actions">
@@ -621,7 +575,10 @@ export function App() {
             <button
               key={item.key}
               className={activeView === item.key ? 'menu-button active' : 'menu-button'}
-              onClick={() => setActiveView(item.key)}
+              onClick={() => {
+                setActiveView(item.key);
+                setStatusMessage('');
+              }}
             >
               {item.label}
             </button>
@@ -631,109 +588,83 @@ export function App() {
 
       <section className="workspace-header">
         <div className="topbar">
-          <span className="badge">{t.badge} {currentUser ? `• ${currentUser.role}` : ''}</span>
+          {currentUser ? <span className="badge">{currentUser.name} • {currentUser.role}</span> : null}
           <div className="topbar-actions">
-            <label className="language-select" htmlFor="language">
-              <span>Idioma</span>
-              <select id="language" value={language} onChange={(event) => setLanguage(event.target.value as Language)} aria-label="Idioma da interface">
-                {Object.entries(languages).map(([code, item]) => <option key={code} value={code}>{item.short}</option>)}
-              </select>
-            </label>
-            <button className="ghost-button" onClick={logout}>{t.logout}</button>
+            <button className="ghost-button" onClick={logout}>Sair</button>
           </div>
         </div>
         <div className="header-copy">
-          <span className="eyebrow">Central comercial</span>
-          <h1>{platformName}</h1>
-          <p>{t.hero}</p>
+          <span className="eyebrow">{currentView.eyebrow}</span>
+          <h1>{currentView.title}</h1>
+          <p>{currentView.description}</p>
         </div>
-        <div className="collector-actions">
-          <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="iphone, notebook, smart tv..." />
-          <select value={marketplace} onChange={(event) => setMarketplace(event.target.value)}>
-            <option value="mercadolivre">Mercado Livre</option>
-            <option value="amazon">Amazon</option>
-            <option value="shopee">Shopee</option>
-          </select>
-          <input type="number" min={minimumDiscountPercent} max="100" value={minDiscount} onChange={(event) => setMinDiscount(String(Math.max(minimumDiscountPercent, Number(event.target.value) || minimumDiscountPercent)))} placeholder="Desconto mínimo" />
-          <button onClick={loadData}>{t.filter}</button>
-          {canEdit ? <button className="primary-action" onClick={collectNow} disabled={collecting}>{collecting ? t.searching : t.searchNow}</button> : null}
-          <button onClick={loadAdminData}>{t.refresh}</button>
-        </div>
+
+        {activeView === 'offers' ? (
+          <div className="collector-actions">
+            <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="Buscar produto ou palavra-chave" />
+            <select value={marketplace} onChange={(event) => setMarketplace(event.target.value)}>
+              <option value="mercadolivre">Mercado Livre</option>
+              <option value="amazon">Amazon</option>
+              <option value="shopee">Shopee</option>
+            </select>
+            <input type="number" min={minimumDiscountPercent} max="100" value={minDiscount} onChange={(event) => setMinDiscount(String(Math.max(minimumDiscountPercent, Number(event.target.value) || minimumDiscountPercent)))} placeholder="Desconto mínimo" />
+            <button onClick={loadData}>Filtrar</button>
+            {canEdit ? <button className="primary-action" onClick={collectNow} disabled={collecting}>{collecting ? 'Buscando...' : 'Buscar agora'}</button> : null}
+            <button onClick={syncOffers}>Sincronizar dados</button>
+          </div>
+        ) : null}
+
         {statusMessage ? <p className={`status-message${statusIsError ? ' status-error' : ''}`} role="status">{statusMessage}</p> : null}
       </section>
 
       <section className="dashboard-view" hidden={activeView !== 'dashboard'}>
         <div className="dashboard-heading">
           <div>
-            <span className="eyebrow">Dashboard</span>
-            <h2>KPIs da operação</h2>
-            <p>Visão rápida das oportunidades qualificadas. A vitrine fica limpa: apenas ofertas com {effectiveMinDiscount}% ou mais de desconto entram no painel.</p>
+            <span className="eyebrow">Resumo comercial</span>
+            <h2>Indicadores principais</h2>
+            <p>Dados de ofertas e oportunidades. Informações técnicas de infraestrutura não são exibidas neste painel.</p>
           </div>
-          <button className="primary-action" onClick={() => { setActiveView('offers'); void loadData(); }}>Ver ofertas</button>
+          <button className="primary-action" onClick={() => setActiveView('offers')}>Abrir ofertas</button>
         </div>
+
         <section className="kpi-grid" aria-label="Indicadores principais">
           <article>
             <span>Ofertas qualificadas</span>
             <strong>{stats.totalOffers}</strong>
-            <small>Base aprovada com desconto mínimo de {effectiveMinDiscount}%</small>
+            <small>Ofertas aprovadas com desconto mínimo de {effectiveMinDiscount}%</small>
           </article>
           <article>
-            <span>Na tela agora</span>
+            <span>Ofertas disponíveis</span>
             <strong>{displayedOffers.length}</strong>
-            <small>Resultado filtrado da busca atual</small>
+            <small>Quantidade carregada para a seleção atual</small>
           </article>
           <article>
             <span>Maior desconto</span>
             <strong>{stats.bestDiscount}%</strong>
-            <small>Melhor oportunidade salva</small>
+            <small>Melhor oportunidade comercial registrada</small>
           </article>
           <article>
-            <span>Score máximo</span>
+            <span>Melhor score</span>
             <strong>{stats.bestScore}</strong>
-            <small>Qualidade da oferta</small>
+            <small>Maior pontuação de oportunidade</small>
           </article>
           <article>
-            <span>Desconto médio visível</span>
+            <span>Desconto médio</span>
             <strong>{averageVisibleDiscount}%</strong>
-            <small>Média da lista atual</small>
+            <small>Média das ofertas atualmente qualificadas</small>
           </article>
           <article>
-            <span>Marketplaces ativos</span>
+            <span>Marketplaces com ofertas</span>
             <strong>{marketplaceCount}</strong>
-            <small>Com ofertas qualificadas</small>
-          </article>
-        </section>
-        <section className="dashboard-columns">
-          <article className="dashboard-panel">
-            <h3>Status dos conectores</h3>
-            <div className="compact-list">
-              {marketplaceStatuses.map((status) => (
-                <div className="compact-row" key={status.marketplace}>
-                  <span>{status.marketplace}<small>{status.detail}</small></span>
-                  <strong className={status.configured ? 'state-ok' : 'state-warn'}>{status.configured ? t.ready : t.pending}</strong>
-                </div>
-              ))}
-            </div>
-          </article>
-          <article className="dashboard-panel">
-            <h3>Top ofertas 50%+</h3>
-            <div className="compact-list">
-              {displayedOffers.slice(0, 6).map((offer) => (
-                <div className="compact-row" key={`dash-${offer.marketplace}-${offer.externalId}`}>
-                  <span>{offer.title}<small>{offer.marketplace} - {money.format(offer.currentPrice)}</small></span>
-                  <strong>{offer.discountPercent ?? 0}%</strong>
-                </div>
-              ))}
-              {!displayedOffers.length ? <p className="panel-hint">Nenhuma oferta qualificada carregada ainda.</p> : null}
-            </div>
+            <small>Plataformas com oportunidades na base</small>
           </article>
         </section>
       </section>
 
       <section className="results-heading" hidden={activeView !== 'offers'}>
         <div>
-          <span className="eyebrow">{t.result}</span>
-          <h2>{t.offersFound}</h2>
+          <span className="eyebrow">Catálogo de oportunidades</span>
+          <h2>Ofertas encontradas</h2>
         </div>
         <strong>{displayedOffers.length}</strong>
       </section>
@@ -743,29 +674,29 @@ export function App() {
           <article className="offer-card" key={`${offer.marketplace}-${offer.externalId}`}>
             {offer.imageUrl ? <img src={offer.imageUrl} alt={offer.title} /> : null}
             <div>
-              <span className="marketplace">{offer.marketplace} - Score {offer.score}</span>
+              <span className="marketplace">{offer.marketplace} • Score {offer.score}</span>
               <h2>{offer.title}</h2>
               <strong>{money.format(offer.currentPrice)}</strong>
               {offer.discountPercent ? <p>{offer.discountPercent}% OFF</p> : null}
               <div className="affiliate-state">
                 <span className={offer.affiliateEligible ? 'state-ok' : 'state-warn'}>
-                  {offer.affiliateEligible ? 'Afiliado ativo' : t.untracked}
+                  {offer.affiliateEligible ? 'Link afiliado ativo' : 'Produto ainda não afiliado'}
                 </span>
                 {offer.affiliateProvider ? <small>{offer.affiliateProvider}</small> : null}
               </div>
               <div className="offer-actions">
-                <a href={offer.affiliateUrl ?? offer.productUrl} target="_blank" rel="noreferrer sponsored">{offer.affiliateEligible ? t.affiliateLink : t.productLink}</a>
-                {canEdit ? <button type="button" onClick={() => affiliateOffer(offer)} disabled={offerActionId === `affiliate-${offer.id}`}>{offerActionId === `affiliate-${offer.id}` ? 'Afiliando...' : t.affiliateProduct}</button> : null}
-                <button type="button" className="ghost-button" onClick={() => copyAffiliateLink(offer)}>{t.copyAffiliate}</button>
-                {canEdit ? <button type="button" className="whatsapp-button" onClick={() => sendOfferToWhatsapp(offer)} disabled={!offer.affiliateEligible || offerActionId === `whatsapp-${offer.id}`}>{offerActionId === `whatsapp-${offer.id}` ? 'Enviando...' : t.sendWhatsapp}</button> : null}
+                <a href={offer.affiliateUrl ?? offer.productUrl} target="_blank" rel="noreferrer sponsored">{offer.affiliateEligible ? 'Ver oferta afiliada' : 'Ver oferta'}</a>
+                {canEdit ? <button type="button" onClick={() => affiliateOffer(offer)} disabled={offerActionId === `affiliate-${offer.id}`}>{offerActionId === `affiliate-${offer.id}` ? 'Afiliando...' : 'Afiliar produto'}</button> : null}
+                <button type="button" className="ghost-button" onClick={() => copyAffiliateLink(offer)}>Copiar link</button>
+                {canEdit ? <button type="button" className="whatsapp-button" onClick={() => sendOfferToWhatsapp(offer)} disabled={!offer.affiliateEligible || offerActionId === `whatsapp-${offer.id}`}>{offerActionId === `whatsapp-${offer.id}` ? 'Enviando...' : 'Enviar WhatsApp'}</button> : null}
               </div>
             </div>
           </article>
         ))}
         {!displayedOffers.length ? (
           <article className="empty-results">
-            <h2>{t.emptyTitle}</h2>
-            <p>{t.emptyText}</p>
+            <h2>Nenhuma oferta encontrada</h2>
+            <p>Use os filtros acima e clique em “Buscar agora” para carregar oportunidades.</p>
           </article>
         ) : null}
       </section>
@@ -774,132 +705,203 @@ export function App() {
         {marketplaceStatuses.map((status) => (
           <article key={status.marketplace}>
             <h3>{status.marketplace}</h3>
-            <strong>{status.configured ? t.ready : status.enabled ? t.pending : t.disabled}</strong>
-            <p className="panel-hint">{status.detail}</p>
+            <strong>{status.enabled ? 'Disponível' : 'Desativado'}</strong>
+            <p className="panel-hint">{status.affiliateLinks ? 'Afiliação suportada nesta integração.' : 'Consulte as opções de afiliação disponíveis para esta plataforma.'}</p>
+            {isAdmin && !status.configured ? <small>Configuração da integração necessária para usar todos os recursos.</small> : null}
           </article>
         ))}
+        {!marketplaceStatuses.length ? (
+          <article>
+            <h3>Marketplaces</h3>
+            <p className="panel-hint">Nenhuma integração disponível no momento.</p>
+          </article>
+        ) : null}
       </section>
 
-      {isAdmin && system ? (
-        <section className="admin-grid" hidden={activeView !== 'operation'}>
+      <section className="admin-grid" hidden={activeView !== 'automation'}>
+        <article>
+          <h3>Fontes de ofertas</h3>
+          <p className="panel-hint">Defina quais buscas serão utilizadas pela automação.</p>
+          {canEdit ? <button onClick={createSource}>Criar fonte da busca atual</button> : <p className="panel-hint">Acesso somente para consulta.</p>}
+          <div className="compact-list">
+            {sources.slice(0, 8).map((source) => (
+              <div className="compact-row" key={source.id}>
+                <span>{source.name}<small>{source.marketplace} • {source.keywords.join(', ')}</small></span>
+                {canEdit ? <button onClick={() => toggleSource(source)}>{source.isActive ? 'Desativar' : 'Ativar'}</button> : null}
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article>
+          <h3>Regras e alertas</h3>
+          <p className="panel-hint">Controle quais oportunidades podem entrar na distribuição automática.</p>
+          {canEdit ? <button onClick={createAlert}>Criar alerta da busca atual</button> : null}
+          <div className="compact-list">
+            {alerts.slice(0, 8).map((alert) => (
+              <div className="compact-row" key={alert.id}>
+                <span>{alert.name}<small>{alert.minDiscountPercent}% OFF • {alert.isActive ? 'Ativo' : 'Inativo'}</small></span>
+                {canEdit ? <button onClick={() => toggleAlert(alert)}>{alert.isActive ? 'Desativar' : 'Ativar'}</button> : null}
+              </div>
+            ))}
+          </div>
+        </article>
+
+        {isAdmin ? (
           <article>
-            <h3>Status da operação</h3>
+            <h3>Canais de distribuição</h3>
+            <p className="panel-hint">Cadastre WhatsApp/Evolution, Telegram ou Webhook para distribuir ofertas afiliadas.</p>
+            <div className="mini-actions">
+              <button onClick={() => setChannelConfig(channelExamples.webhook)}>Modelo Webhook</button>
+              <button onClick={() => setChannelConfig(channelExamples.telegram)}>Modelo Telegram</button>
+              <button onClick={() => setChannelConfig(channelExamples.whatsapp)}>Modelo WhatsApp</button>
+              <button onClick={() => setChannelConfig(channelExamples.evolution)}>Modelo Evolution</button>
+            </div>
+            <textarea value={channelConfig} onChange={(event) => setChannelConfig(event.target.value)} />
+            <div className="mini-actions">
+              <button onClick={() => createChannel('webhook')}>Webhook</button>
+              <button onClick={() => createChannel('telegram')}>Telegram</button>
+              <button onClick={() => createChannel('whatsapp')}>WhatsApp</button>
+              <button onClick={() => createChannel('evolution')}>Evolution API</button>
+            </div>
             <div className="compact-list">
-              <div className="compact-row"><span>API geral<small>{system.status}</small></span></div>
-              <div className="compact-row"><span>Banco de dados<small>{system.database}</small></span></div>
-              <div className="compact-row"><span>Redis / fila<small>{system.redis}</small></span></div>
+              {channels.slice(0, 8).map((channel) => (
+                <div className="compact-row" key={channel.id}>
+                  <span>{channel.name}<small>{channel.type} • {channel.isActive ? 'Ativo' : 'Inativo'}</small></span>
+                  <button onClick={() => toggleChannel(channel)}>{channel.isActive ? 'Desativar' : 'Ativar'}</button>
+                </div>
+              ))}
             </div>
           </article>
+        ) : null}
+
+        {isAdmin ? (
           <article>
-            <h3>Fila BullMQ</h3>
+            <h3>Usuários</h3>
+            <input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Nome" />
+            <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="E-mail" />
+            <input value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} type="password" placeholder="Senha mínima 12 caracteres" />
+            <select value={newUserRole} onChange={(event) => setNewUserRole(event.target.value)}>
+              <option value="VIEWER">Visualizador</option>
+              <option value="EDITOR">Editor</option>
+              <option value="ADMIN">Administrador</option>
+            </select>
+            <button onClick={createUser}>Criar usuário</button>
             <div className="compact-list">
-              {Object.entries(system.queue).map(([key, value]) => <div className="compact-row" key={key}><span>{key}<small>{value} jobs</small></span></div>)}
+              {users.slice(0, 8).map((user) => (
+                <div className="compact-row" key={user.id}>
+                  <span>{user.name}<small>{user.email} • {user.role} • {user.isActive ? 'Ativo' : 'Inativo'}</small></span>
+                  <button onClick={() => toggleUser(user)}>{user.isActive ? 'Desativar' : 'Ativar'}</button>
+                </div>
+              ))}
             </div>
           </article>
+        ) : null}
+
+        {canEdit ? (
           <article>
-            <h3>Indicadores internos</h3>
+            <h3>Histórico de envios</h3>
+            <button onClick={loadAdminData}>Atualizar histórico</button>
             <div className="compact-list">
-              <div className="compact-row"><span>Fontes ativas<small>{system.totals.activeSources}</small></span></div>
-              <div className="compact-row"><span>Alertas ativos<small>{system.totals.activeAlerts}</small></span></div>
-              <div className="compact-row"><span>Canais ativos<small>{system.totals.activeChannels}</small></span></div>
-              <div className="compact-row"><span>Envios / falhas<small>{system.totals.sentDispatches} / {system.totals.failedDispatches}</small></span></div>
+              {logs.slice(0, 10).map((log) => (
+                <div className="compact-row" key={log.id}>
+                  <span>{log.channel} • {log.status}<small>{log.offer?.title ?? 'Oferta indisponível'}{log.error ? ` • ${log.error}` : ''}</small></span>
+                </div>
+              ))}
             </div>
           </article>
-        </section>
-      ) : null}
+        ) : null}
+      </section>
 
       {isAdmin && platformSettings ? (
         <section className="settings-panel" hidden={activeView !== 'settings'}>
           <div className="settings-heading">
             <div>
-              <span className="badge">Configuração operacional v{platformSettings.version}</span>
+              <span className="badge">Configuração v{platformSettings.version}</span>
               <h2>Parâmetros da plataforma</h2>
-              <p>Altere regras de operação sem editar código. Credenciais continuam protegidas no ambiente e nos canais criptografados.</p>
+              <p>Altere regras comerciais e de automação. Credenciais permanecem protegidas no ambiente.</p>
             </div>
             <button onClick={saveSettings} disabled={loading}>{loading ? 'Aplicando...' : 'Salvar e aplicar'}</button>
           </div>
+
           <div className="settings-grid">
             <fieldset>
               <legend>Identidade</legend>
-              <label>Nome da plataforma<input value={platformSettings.settings.branding.platformName} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, branding: { ...settings.branding, platformName: event.target.value } }))} /></label>
-              <label>Fuso horário<input value={platformSettings.settings.branding.timezone} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, branding: { ...settings.branding, timezone: event.target.value } }))} /></label>
-              <small>Localidade pt-BR • Moeda BRL</small>
+              <label>
+                Nome da plataforma
+                <input value={platformSettings.settings.branding.platformName} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, branding: { ...settings.branding, platformName: event.target.value } }))} />
+              </label>
+              <label>
+                Fuso horário
+                <input value={platformSettings.settings.branding.timezone} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, branding: { ...settings.branding, timezone: event.target.value } }))} />
+              </label>
+              <small>Localidade: Português do Brasil • Moeda: Real brasileiro</small>
             </fieldset>
+
             <fieldset>
-              <legend>Robô de varredura</legend>
-              <label className="check-row"><input type="checkbox" checked={platformSettings.settings.collection.automaticEnabled} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, collection: { ...settings.collection, automaticEnabled: event.target.checked } }))} />Varredura automática ativa</label>
-              <label>Intervalo em segundos<input type="number" min="60" max="86400" value={platformSettings.settings.collection.intervalSeconds} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, collection: { ...settings.collection, intervalSeconds: Number(event.target.value) } }))} /></label>
-              <label>Resultados por fonte<input type="number" min="1" max="100" value={platformSettings.settings.collection.maxResultsPerSource} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, collection: { ...settings.collection, maxResultsPerSource: Number(event.target.value) } }))} /></label>
+              <legend>Varredura de ofertas</legend>
+              <label className="check-row">
+                <input type="checkbox" checked={platformSettings.settings.collection.automaticEnabled} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, collection: { ...settings.collection, automaticEnabled: event.target.checked } }))} />
+                Varredura automática ativa
+              </label>
+              <label>
+                Intervalo em segundos
+                <input type="number" min="60" max="86400" value={platformSettings.settings.collection.intervalSeconds} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, collection: { ...settings.collection, intervalSeconds: Number(event.target.value) } }))} />
+              </label>
+              <label>
+                Resultados por fonte
+                <input type="number" min="1" max="100" value={platformSettings.settings.collection.maxResultsPerSource} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, collection: { ...settings.collection, maxResultsPerSource: Number(event.target.value) } }))} />
+              </label>
             </fieldset>
+
             <fieldset>
               <legend>Qualificação</legend>
-              <label>Desconto mínimo (%)<input type="number" min={minimumDiscountPercent} max="100" value={Math.max(minimumDiscountPercent, platformSettings.settings.qualification.minDiscountPercent)} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, qualification: { ...settings.qualification, minDiscountPercent: Math.max(minimumDiscountPercent, Number(event.target.value) || minimumDiscountPercent) } }))} /></label>
-              <label>Score mínimo<input type="number" min="0" max="100" value={platformSettings.settings.qualification.minOpportunityScore} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, qualification: { ...settings.qualification, minOpportunityScore: Number(event.target.value) } }))} /></label>
+              <label>
+                Desconto mínimo (%)
+                <input type="number" min={minimumDiscountPercent} max="100" value={Math.max(minimumDiscountPercent, platformSettings.settings.qualification.minDiscountPercent)} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, qualification: { ...settings.qualification, minDiscountPercent: Math.max(minimumDiscountPercent, Number(event.target.value) || minimumDiscountPercent) } }))} />
+              </label>
+              <label>
+                Score mínimo
+                <input type="number" min="0" max="100" value={platformSettings.settings.qualification.minOpportunityScore} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, qualification: { ...settings.qualification, minOpportunityScore: Number(event.target.value) } }))} />
+              </label>
               <label className="check-row locked"><input type="checkbox" checked disabled />Somente links afiliados verificados</label>
             </fieldset>
+
             <fieldset>
               <legend>Distribuição</legend>
-              <label className="check-row"><input type="checkbox" checked={platformSettings.settings.dispatch.automaticEnabled} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, dispatch: { ...settings.dispatch, automaticEnabled: event.target.checked } }))} />Envio automático ativo</label>
-              <label>Ofertas por ciclo<input type="number" min="1" max="500" value={platformSettings.settings.dispatch.maxOffersPerCycle} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, dispatch: { ...settings.dispatch, maxOffersPerCycle: Number(event.target.value) } }))} /></label>
+              <label className="check-row">
+                <input type="checkbox" checked={platformSettings.settings.dispatch.automaticEnabled} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, dispatch: { ...settings.dispatch, automaticEnabled: event.target.checked } }))} />
+                Envio automático ativo
+              </label>
+              <label>
+                Ofertas por ciclo
+                <input type="number" min="1" max="500" value={platformSettings.settings.dispatch.maxOffersPerCycle} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, dispatch: { ...settings.dispatch, maxOffersPerCycle: Number(event.target.value) } }))} />
+              </label>
             </fieldset>
+
             <fieldset>
-              <legend>API aberta</legend>
-              <label className="check-row"><input type="checkbox" checked={platformSettings.settings.publicApi.enabled} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, publicApi: { ...settings.publicApi, enabled: event.target.checked } }))} />API pública ativa</label>
-              <label>Itens padrão<input type="number" min="1" max="100" value={platformSettings.settings.publicApi.defaultPageSize} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, publicApi: { ...settings.publicApi, defaultPageSize: Number(event.target.value) } }))} /></label>
-              <label>Limite máximo<input type="number" min="1" max="200" value={platformSettings.settings.publicApi.maxPageSize} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, publicApi: { ...settings.publicApi, maxPageSize: Number(event.target.value) } }))} /></label>
+              <legend>API pública</legend>
+              <label className="check-row">
+                <input type="checkbox" checked={platformSettings.settings.publicApi.enabled} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, publicApi: { ...settings.publicApi, enabled: event.target.checked } }))} />
+                API pública ativa
+              </label>
+              <label>
+                Itens padrão
+                <input type="number" min="1" max="100" value={platformSettings.settings.publicApi.defaultPageSize} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, publicApi: { ...settings.publicApi, defaultPageSize: Number(event.target.value) } }))} />
+              </label>
+              <label>
+                Limite máximo
+                <input type="number" min="1" max="200" value={platformSettings.settings.publicApi.maxPageSize} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, publicApi: { ...settings.publicApi, maxPageSize: Number(event.target.value) } }))} />
+              </label>
             </fieldset>
           </div>
-          <small className="settings-meta">Origem: {platformSettings.source === 'database' ? 'banco versionado' : 'padrões seguros do ambiente'}{platformSettings.updatedAt ? ` • Atualizado em ${new Date(platformSettings.updatedAt).toLocaleString('pt-BR')}` : ''}</small>
+
+          <small className="settings-meta">
+            Origem: {platformSettings.source === 'database' ? 'configuração salva' : 'padrões do ambiente'}
+            {platformSettings.updatedAt ? ` • Atualizado em ${new Date(platformSettings.updatedAt).toLocaleString('pt-BR')}` : ''}
+          </small>
         </section>
       ) : null}
-
-      <section className="admin-grid" hidden={activeView !== 'operation'}>
-        <article>
-          <h3>Fontes</h3>
-          {canEdit ? <button onClick={createSource}>Criar fonte da busca atual</button> : <p className="panel-hint">Acesso somente para consulta.</p>}
-          <div className="compact-list">{sources.slice(0, 8).map((source) => <div className="compact-row" key={source.id}><span>{source.name}<small>{source.marketplace} • {source.keywords.join(', ')}</small></span>{canEdit ? <button onClick={() => toggleSource(source)}>{source.isActive ? 'Desativar' : 'Ativar'}</button> : null}</div>)}</div>
-        </article>
-        <article>
-          <h3>Alertas</h3>
-          {canEdit ? <button onClick={createAlert}>Criar alerta da busca atual</button> : null}
-          <p className="panel-hint">Com alertas ativos, só serão distribuídas ofertas que combinarem com as regras.</p>
-          <div className="compact-list">{alerts.slice(0, 8).map((alert) => <div className="compact-row" key={alert.id}><span>{alert.name}<small>{alert.minDiscountPercent}% OFF • {alert.isActive ? 'Ativo' : 'Inativo'}</small></span>{canEdit ? <button onClick={() => toggleAlert(alert)}>{alert.isActive ? 'Desativar' : 'Ativar'}</button> : null}</div>)}</div>
-        </article>
-        {isAdmin ? (
-          <article>
-            <h3>Distribuição</h3>
-            <p className="panel-hint">Cadastre um canal WhatsApp/Evolution ativo. As ofertas afiliadas podem ser enviadas por clique e o robô também dispara automaticamente quando a regra de alerta combina.</p>
-            <div className="mini-actions"><button onClick={() => setChannelConfig(channelExamples.webhook)}>Modelo Webhook</button><button onClick={() => setChannelConfig(channelExamples.telegram)}>Modelo Telegram</button><button onClick={() => setChannelConfig(channelExamples.whatsapp)}>Modelo WhatsApp</button><button onClick={() => setChannelConfig(channelExamples.evolution)}>Modelo Evolution</button></div>
-            <textarea value={channelConfig} onChange={(event) => setChannelConfig(event.target.value)} />
-            <div className="mini-actions"><button onClick={() => createChannel('webhook')}>Webhook</button><button onClick={() => createChannel('telegram')}>Telegram</button><button onClick={() => createChannel('whatsapp')}>WhatsApp</button><button onClick={() => createChannel('evolution')}>Evolution API</button></div>
-            <div className="compact-list">{channels.slice(0, 8).map((channel) => <div className="compact-row" key={channel.id}><span>{channel.name}<small>{channel.type} • {channel.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleChannel(channel)}>{channel.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
-          </article>
-        ) : null}
-      </section>
-
-      {(isAdmin || canEdit) ? (
-        <section className="admin-grid" hidden={activeView !== 'operation'}>
-          {isAdmin ? (
-            <article>
-              <h3>Usuários</h3>
-              <input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Nome" />
-              <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="E-mail" />
-              <input value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} type="password" placeholder="Senha mínima 12 caracteres" />
-              <select value={newUserRole} onChange={(event) => setNewUserRole(event.target.value)}><option value="VIEWER">Viewer</option><option value="EDITOR">Editor</option><option value="ADMIN">Admin</option></select>
-              <button onClick={createUser}>Criar usuário</button>
-              <div className="compact-list">{users.slice(0, 8).map((user) => <div className="compact-row" key={user.id}><span>{user.name}<small>{user.email} • {user.role} • {user.isActive ? 'Ativo' : 'Inativo'}</small></span><button onClick={() => toggleUser(user)}>{user.isActive ? 'Desativar' : 'Ativar'}</button></div>)}</div>
-            </article>
-          ) : null}
-          {canEdit ? (
-            <article>
-              <h3>Logs de envio</h3>
-              <button onClick={loadAdminData}>Atualizar logs</button>
-              <div className="compact-list">{logs.slice(0, 10).map((log) => <div className="compact-row" key={log.id}><span>{log.channel} • {log.status}<small>{log.offer?.title ?? 'Oferta indisponível'} {log.error ? `• ${log.error}` : ''}</small></span></div>)}</div>
-            </article>
-          ) : null}
-        </section>
-      ) : null}
-
     </main>
   );
 }

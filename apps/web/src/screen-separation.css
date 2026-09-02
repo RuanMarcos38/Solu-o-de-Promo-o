@@ -1,0 +1,64 @@
+/* Separação de telas comerciais.
+   Dashboard, Ofertas, Marketplaces, Automação e Configurações são áreas independentes.
+   Nenhum diagnóstico técnico de infraestrutura é apresentado ao usuário. */
+
+[hidden] {
+  display: none !important;
+}
+
+.workspace-header:not(:has(.collector-actions)) {
+  grid-template-areas:
+    "copy topbar"
+    "status status" !important;
+  gap: 14px 28px !important;
+}
+
+.workspace-header:not(:has(.collector-actions)):not(:has(.status-message)) {
+  grid-template-areas: "copy topbar" !important;
+}
+
+.workspace-header:has(.collector-actions) {
+  grid-template-areas:
+    "copy topbar"
+    "collector collector"
+    "status status" !important;
+}
+
+.dashboard-view {
+  padding-top: 0 !important;
+}
+
+.dashboard-view .kpi-grid {
+  margin-top: 0 !important;
+}
+
+.results-heading {
+  margin-top: 0 !important;
+}
+
+.admin-grid,
+.settings-panel,
+.offer-grid,
+.results-heading,
+.dashboard-view {
+  scroll-margin-top: 24px;
+}
+
+@media (max-width: 900px) {
+  .workspace-header,
+  .workspace-header:has(.collector-actions),
+  .workspace-header:not(:has(.collector-actions)) {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "copy"
+      "topbar"
+      "collector"
+      "status" !important;
+  }
+
+  .workspace-header:not(:has(.collector-actions)):not(:has(.status-message)) {
+    grid-template-areas:
+      "copy"
+      "topbar" !important;
+  }
+}
