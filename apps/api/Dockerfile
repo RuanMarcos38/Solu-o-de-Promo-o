@@ -10,8 +10,16 @@ WORKDIR /app
 COPY . .
 RUN export DATABASE_URL="postgresql://localhost:5432/promo_db" && npm run prisma:generate -w apps/api
 RUN npm run build -w apps/api
+# O runtime da API/worker precisa apenas do Prisma Client. O CLI fica fora da imagem final.
 RUN npm prune --omit=dev
-RUN npm install --omit=dev --no-save prisma@6.19.3
+
+FROM deps AS migrate
+WORKDIR /app
+COPY . .
+# Usa uma versão do CLI sem o advisory do deepmerge-ts e somente na etapa efêmera de migration.
+RUN npm install --no-save --no-audit --no-fund prisma@6.12.0
+USER node
+CMD ["npm", "run", "prisma:deploy", "-w", "apps/api"]
 
 FROM node:24-alpine AS runner
 WORKDIR /app
