@@ -5,6 +5,7 @@ import { AutomationDock } from './AutomationDock';
 import './styles.css';
 import './system-dashboard.css';
 import './automation-dock.css';
+import './automation-groups.css';
 
 const rootElement = document.getElementById('root')!;
 
