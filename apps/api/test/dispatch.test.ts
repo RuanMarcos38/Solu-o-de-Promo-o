@@ -75,10 +75,13 @@ describe('distribuição', () => {
     assert.match(first, /^[a-f0-9]{64}$/);
   });
 
-  test('bloqueia oferta não verificada e Mercado Livre em grupos fechados', () => {
+  test('bloqueia oferta não verificada e Mercado Livre em grupos privados, mas permite grupos públicos', () => {
     assert.equal(checkMarketplaceChannelPolicy({ ...offer, affiliateEligible: false }, 'telegram', { audience: 'public' }).allowed, false);
     assert.equal(checkMarketplaceChannelPolicy(offer, 'whatsapp', { audience: 'private' }).allowed, false);
+    assert.equal(checkMarketplaceChannelPolicy(offer, 'evolution', { audience: 'private' }).allowed, false);
     assert.equal(checkMarketplaceChannelPolicy(offer, 'telegram', { audience: 'private' }).allowed, false);
+    assert.equal(checkMarketplaceChannelPolicy(offer, 'whatsapp', { audience: 'public' }).allowed, true);
+    assert.equal(checkMarketplaceChannelPolicy(offer, 'evolution', { audience: 'public' }).allowed, true);
     assert.equal(checkMarketplaceChannelPolicy(offer, 'telegram', { audience: 'public' }).allowed, true);
     assert.equal(checkMarketplaceChannelPolicy({ ...offer, marketplace: 'amazon' }, 'whatsapp', { audience: 'private' }).allowed, true);
   });
