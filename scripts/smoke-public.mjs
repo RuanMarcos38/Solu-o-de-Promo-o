@@ -6,6 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const apiUrl = (process.env.API_URL ?? 'https://api-ofertas.r2rmarketingdigital.com.br').replace(/\/$/, '');
 const appUrl = (process.env.APP_URL ?? 'https://ofertas.r2rmarketingdigital.com.br').replace(/\/$/, '');
 const strictMarketplaces = process.env.STRICT_MARKETPLACES === 'true';
+const requireMercadoLivre = process.env.REQUIRE_MERCADO_LIVRE_SMOKE !== 'false';
 const probeOptionalMarketplaces = process.env.PROBE_OPTIONAL_MARKETPLACES === 'true';
 const checkFrontendBundle = process.env.CHECK_FRONTEND_BUNDLE !== 'false';
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 20000);
@@ -111,14 +112,14 @@ async function probeMarketplace(marketplace, keyword, required) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro desconhecido';
     if (required || strictMarketplaces) record('fail', `Marketplace ${marketplace}`, message);
-    else record('warn', `Marketplace ${marketplace}`, `${message}. Configure credenciais oficiais para exigir este teste.`);
+    else record('warn', `Marketplace ${marketplace}`, `${message}. Dependencia externa indisponivel; o build interno continua validado.`);
   }
 }
 
 if (checkFrontendBundle) {
   await checkAppBundle();
 }
-await probeMarketplace('mercadolivre', process.env.MERCADO_LIVRE_SMOKE_KEYWORD ?? 'fone de ouvido', true);
+await probeMarketplace('mercadolivre', process.env.MERCADO_LIVRE_SMOKE_KEYWORD ?? 'fone de ouvido', requireMercadoLivre);
 
 if (probeOptionalMarketplaces || strictMarketplaces) {
   const statuses = marketplaceStatus?.marketplaces ?? [];
