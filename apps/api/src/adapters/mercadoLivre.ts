@@ -190,16 +190,22 @@ function normalizeMercadoLivreOfferPageItem(item: MercadoLivreOfferPageItem): Om
 }
 
 function parseMoneyContainers(block: string) {
+  const amountStarts = [...block.matchAll(/<(?:span|div)[^>]*class="([^"]*)"[^>]*>/gi)]
+    .filter((match) => (match[1] ?? '').split(/\s+/).includes('andes-money-amount'))
+    .map((match) => ({ index: match.index ?? 0, className: match[1] ?? '' }));
   const amounts: Array<{ value: number; previous: boolean }> = [];
-  const matches = block.matchAll(/<(?:span|div)[^>]*class="([^"]*andes-money-amount[^"]*)"[^>]*>([\s\S]*?)(?=<(?:span|div)[^>]*class="[^"]*andes-money-amount|<\/li>|<\/div>)/gi);
-  for (const match of matches) {
-    const className = match[1] ?? '';
-    const body = match[2] ?? '';
+
+  for (let index = 0; index < amountStarts.length; index += 1) {
+    const current = amountStarts[index];
+    const nextStart = amountStarts[index + 1]?.index ?? Math.min(block.length, current.index + 1800);
+    const body = block.slice(current.index, nextStart);
     const fraction = stripHtml(body.match(/andes-money-amount__fraction[^>]*>([^<]+)/i)?.[1] ?? '');
     const cents = stripHtml(body.match(/andes-money-amount__cents[^>]*>([^<]+)/i)?.[1] ?? '');
     const normalized = `${fraction.replace(/\D/g, '')}${cents ? `.${cents.replace(/\D/g, '').slice(0, 2)}` : ''}`;
     const value = Number(normalized);
-    if (Number.isFinite(value) && value > 0) amounts.push({ value, previous: /previous|original/i.test(className) });
+    if (Number.isFinite(value) && value > 0) {
+      amounts.push({ value, previous: /previous|original/i.test(current.className) });
+    }
   }
   return amounts;
 }
