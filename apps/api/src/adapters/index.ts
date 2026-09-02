@@ -16,27 +16,27 @@ export function getAdapter(name: MarketplaceName) {
 
 export function getMarketplaceStatuses() {
   const mercadoLivreAffiliateLinks = Boolean(config.affiliateResolverUrl);
-  const internalAffiliateLinks = true;
   const amazonOfficialReady = Boolean(
     config.amazonEnabled
     && config.amazonCredentialId
     && config.amazonCredentialSecret
     && config.amazonPartnerTag
   );
+  const shopeeOfficialReady = hasShopeeOfficialCredentials();
 
   return [
     {
       marketplace: 'mercadolivre',
       enabled: true,
       configured: true,
-      affiliateLinks: mercadoLivreAffiliateLinks || internalAffiliateLinks,
+      affiliateLinks: mercadoLivreAffiliateLinks,
       detail: config.mercadoLivreAccessToken
         ? mercadoLivreAffiliateLinks
-          ? 'Busca oficial e resolvedor autorizado configurados.'
-          : 'Busca oficial configurada. Links rastreaveis internos ativos; cadastre resolvedor autorizado para links oficiais.'
+          ? 'Busca oficial e resolvedor autorizado de afiliacao configurados.'
+          : 'Busca de produtos configurada. Afiliacao oficial ainda depende de um resolvedor autorizado do programa.'
         : mercadoLivreAffiliateLinks
-          ? 'Busca publica ativa e resolvedor autorizado configurado.'
-          : 'Busca publica ativa no Mercado Livre. Links rastreaveis internos ativos; MERCADO_LIVRE_ACCESS_TOKEN e resolvedor autorizado seguem opcionais.'
+          ? 'Busca publica ativa e resolvedor autorizado de afiliacao configurado.'
+          : 'Busca publica ativa. Para comissao, configure um resolvedor autorizado que devolva link oficial de afiliado.'
     },
     {
       marketplace: 'amazon',
@@ -47,18 +47,18 @@ export function getMarketplaceStatuses() {
         ? 'Amazon Creators API configurada com OAuth 2.0 e Partner Tag.'
         : config.amazonPartnerTag
           ? 'Busca publica ativa na Amazon Brasil com Partner Tag. Configure Amazon Creators API para busca oficial mais estavel.'
-          : 'Busca publica ativa na Amazon Brasil para resultado imediato. Configure AMAZON_PARTNER_TAG e Creators API para links rastreaveis oficiais.'
+          : 'Busca publica ativa na Amazon Brasil. Configure AMAZON_PARTNER_TAG e Creators API para gerar links com comissao.'
     },
     {
       marketplace: 'shopee',
       enabled: true,
-      configured: hasShopeeOfficialCredentials() || hasShopeeApifyFallback(),
-      affiliateLinks: hasShopeeOfficialCredentials() || internalAffiliateLinks,
-      detail: hasShopeeOfficialCredentials()
+      configured: shopeeOfficialReady || hasShopeeApifyFallback(),
+      affiliateLinks: shopeeOfficialReady,
+      detail: shopeeOfficialReady
         ? 'Shopee Affiliate Open API configurada e pronta para retornar offerLink rastreavel.'
         : hasShopeeApifyFallback()
-          ? 'Busca publica via Apify configurada para resultado imediato. Links rastreaveis internos ativos; configure Shopee Affiliate Open API para offerLink oficial.'
-          : 'Shopee precisa de APIFY_TOKEN no EasyPanel para busca publica via Apify, ou SHOPEE_APP_ID e SHOPEE_SECRET para links oficiais.'
+          ? 'Busca publica via Apify configurada. Para afiliacao automatica oficial, configure SHOPEE_APP_ID e SHOPEE_SECRET.'
+          : 'Shopee precisa de APIFY_TOKEN para busca publica ou SHOPEE_APP_ID e SHOPEE_SECRET para Affiliate Open API.'
     }
   ];
 }
