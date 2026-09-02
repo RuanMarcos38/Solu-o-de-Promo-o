@@ -33,10 +33,10 @@ export function getMarketplaceStatuses() {
       detail: config.mercadoLivreAccessToken
         ? mercadoLivreAffiliateLinks
           ? 'Busca oficial e resolvedor autorizado de afiliacao configurados.'
-          : 'Busca de produtos configurada. Afiliacao oficial ainda depende de um resolvedor autorizado do programa.'
+          : 'Busca oficial pronta. Para comissao automatica, conecte o resolvedor autorizado do programa de afiliados.'
         : mercadoLivreAffiliateLinks
-          ? 'Busca publica ativa e resolvedor autorizado de afiliacao configurado.'
-          : 'Busca publica ativa. Para comissao, configure um resolvedor autorizado que devolva link oficial de afiliado.'
+          ? 'Busca resiliente ativa e resolvedor autorizado de afiliacao configurado.'
+          : 'Busca resiliente ativa. Para comissao automatica, conecte OAuth/access token e resolvedor autorizado do programa.'
     },
     {
       marketplace: 'amazon',
@@ -52,13 +52,13 @@ export function getMarketplaceStatuses() {
     {
       marketplace: 'shopee',
       enabled: true,
-      configured: shopeeOfficialReady || hasShopeeApifyFallback(),
+      configured: true,
       affiliateLinks: shopeeOfficialReady,
       detail: shopeeOfficialReady
         ? 'Shopee Affiliate Open API configurada e pronta para retornar offerLink rastreavel.'
         : hasShopeeApifyFallback()
-          ? 'Busca publica via Apify configurada. Para afiliacao automatica oficial, configure SHOPEE_APP_ID e SHOPEE_SECRET.'
-          : 'Shopee precisa de APIFY_TOKEN para busca publica ou SHOPEE_APP_ID e SHOPEE_SECRET para Affiliate Open API.'
+          ? 'Busca publica direta ativa com Apify como contingencia. Para comissao automatica oficial, configure SHOPEE_APP_ID e SHOPEE_SECRET.'
+          : 'Busca publica direta ativa. Para comissao automatica oficial, configure SHOPEE_APP_ID e SHOPEE_SECRET.'
     }
   ];
 }
