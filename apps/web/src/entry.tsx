@@ -6,6 +6,7 @@ import './styles.css';
 import './automation-dock.css';
 import './automation-groups.css';
 import './zenite-production.css';
+import './screen-separation.css';
 
 document.documentElement.lang = 'pt-BR';
 localStorage.setItem('promo_language', 'pt-BR');
