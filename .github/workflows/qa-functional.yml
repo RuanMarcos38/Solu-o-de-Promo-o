@@ -1,0 +1,138 @@
+name: QA Funcional
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-functional-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Botoes e backend funcional
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: promo
+          POSTGRES_PASSWORD: promo
+          POSTGRES_DB: promo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U promo -d promo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://promo:promo@localhost:5432/promo_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      API_HOST: 127.0.0.1
+      API_PORT: '3333'
+      API_URL: http://127.0.0.1:3333
+      APP_URL: http://127.0.0.1:5173
+      VITE_API_URL: http://127.0.0.1:3333
+      JWT_SECRET: qa-bot-jwt-secret-for-local-functional-tests-only
+      JWT_EXPIRES_IN: 15m
+      JWT_ISSUER: promotion-radar-api-test
+      JWT_AUDIENCE: promotion-radar-web-test
+      FRONTEND_ORIGINS: http://127.0.0.1:5173
+      BOOTSTRAP_ADMIN_ENABLED: 'true'
+      ADMIN_NAME: Administrador de Teste
+      ADMIN_EMAIL: admin@test.local
+      ADMIN_PASSWORD: QaBotFunctionalPassword123!
+      CHANNEL_CONFIG_ENCRYPTION_KEY: qa-bot-local-encryption-passphrase-over-32-chars
+      ALLOW_INSECURE_OUTBOUND_HTTP: 'false'
+      COLLECT_INTERVAL_SECONDS: '3600'
+      REQUIRE_VERIFIED_AFFILIATE_LINKS: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci --loglevel=error
+
+      - name: Prepare database
+        run: |
+          npm run prisma:generate -w apps/api
+          npm run prisma:deploy -w apps/api
+
+      - name: Build local QA stack
+        run: |
+          npm run build -w apps/api
+          npm run build -w apps/web
+
+      - name: Seed isolated QA offers
+        run: node scripts/qa-seed.mjs
+
+      - name: Start API and frontend
+        run: |
+          npm run start -w apps/api > /tmp/qa-api.log 2>&1 &
+          echo $! > /tmp/qa-api.pid
+          npm run preview -w apps/web -- --host 127.0.0.1 --port 5173 > /tmp/qa-web.log 2>&1 &
+          echo $! > /tmp/qa-web.pid
+
+      - name: Wait for local stack
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3333/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3333/health
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5173/ >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:5173/ >/dev/null
+          sleep 2
+
+      - name: Audit backend routes and business flows
+        run: node scripts/qa-backend-functional.mjs
+
+      - name: Reset isolated QA offers for browser
+        run: node scripts/qa-seed.mjs
+
+      - name: Install browser runtime
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Audit visible buttons and frontend backend integration
+        run: node scripts/qa-ui-buttons.mjs
+
+      - name: Upload functional QA reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-functional-report
+          path: |
+            qa-reports/backend-functional.json
+            qa-reports/ui-buttons.json
+            /tmp/qa-api.log
+            /tmp/qa-web.log
+          if-no-files-found: warn
+          retention-days: 14
