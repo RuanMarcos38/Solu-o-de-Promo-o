@@ -1,13 +1,14 @@
 import { mercadoLivreAdapter } from './mercadoLivre.js';
 import { amazonAdapter } from './amazon.js';
-import { hasShopeeApifyFallback, hasShopeeOfficialCredentials, shopeeAdapter } from './shopee.js';
+import { hasShopeeApifyFallback, hasShopeeOfficialCredentials } from './shopee.js';
+import { shopeeAffiliateV2Adapter } from './shopeeAffiliateV2.js';
 import type { MarketplaceAdapter, MarketplaceName } from '../types.js';
 import { config } from '../config.js';
 
 export const adapters: MarketplaceAdapter[] = [
   mercadoLivreAdapter,
   amazonAdapter,
-  shopeeAdapter
+  shopeeAffiliateV2Adapter
 ];
 
 export function getAdapter(name: MarketplaceName) {
@@ -96,10 +97,10 @@ export function getMarketplaceStatuses(): MarketplaceIntegrationStatus[] {
         'Uso do offerLink retornado pela API oficial para rastreamento da comissão'
       ],
       detail: shopeeOfficialReady
-        ? 'Shopee Affiliate Open API configurada e pronta para retornar offerLink rastreável. Nenhuma API terceirizada paga é obrigatória.'
+        ? 'Shopee Affiliate Open API configurada: busca produtos, desconto, comissão e offerLink rastreável da própria conta. Nenhuma API terceirizada paga é obrigatória.'
         : shopeePaidFallbackConfigured
-          ? 'Busca pública ativa. Existe um fallback terceirizado opcional configurado, mas ele não é necessário para o modo oficial e pode ser removido para operação sem custo externo.'
-          : 'Busca pública ativa. Para comissão automática oficial, configure SHOPEE_APP_ID e SHOPEE_SECRET da sua conta de afiliado.'
+          ? 'Existe descoberta terceirizada opcional, mas o envio com comissão permanece bloqueado até conectar a Shopee Affiliate Open API da conta.'
+          : 'Descoberta pública é apenas contingência. Para buscar ofertas já com link de comissão, conecte App ID e Secret da Shopee Affiliate Open API.'
     }
   ];
 }
