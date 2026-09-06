@@ -1,5 +1,6 @@
 import { createApp as createBaseApp, type CreateAppOptions } from './bootstrap.js';
 import { registerAffiliateConnectionRoutes } from './affiliateConnectionRoutes.js';
+import { registerAffiliateDiagnosticsRoutes } from './affiliateDiagnosticsRoutes.js';
 import { hydrateAffiliateRuntimeConfig } from './affiliateConnectionStore.js';
 import { registerDispatchOperationsRoutes } from './dispatchOperations.js';
 import { ensureMercadoLivreAccessToken } from './mercadoLivreOAuth.js';
@@ -18,6 +19,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   mercadoLivreRefreshTimer.unref();
 
   await registerAffiliateConnectionRoutes(app);
+  await registerAffiliateDiagnosticsRoutes(app);
   await registerDispatchOperationsRoutes(app);
   await registerOperationalAlertRoutes(app);
   await registerObservabilityRoutes(app);

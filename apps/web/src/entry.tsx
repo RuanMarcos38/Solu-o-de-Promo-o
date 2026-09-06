@@ -4,6 +4,7 @@ import { App } from './App';
 import { AffiliateHub } from './AffiliateHub';
 import { AutomationDock } from './AutomationDock';
 import './promotion-browse-mode';
+import './enterprise-ui-runtime';
 import './styles.css';
 import './automation-dock.css';
 import './automation-groups.css';
@@ -12,6 +13,7 @@ import './screen-separation.css';
 import './marketplace-saas-2026.css';
 import './corporate-polish-2026.css';
 import './affiliate-hub.css';
+import './enterprise-operational-2026.css';
 
 document.documentElement.lang = 'pt-BR';
 localStorage.setItem('promo_language', 'pt-BR');
