@@ -7,6 +7,7 @@ import './automation-dock.css';
 import './automation-groups.css';
 import './zenite-production.css';
 import './screen-separation.css';
+import './marketplace-saas-2026.css';
 
 document.documentElement.lang = 'pt-BR';
 localStorage.setItem('promo_language', 'pt-BR');
