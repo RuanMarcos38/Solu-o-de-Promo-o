@@ -55,11 +55,11 @@ export function getMarketplaceStatuses(): MarketplaceIntegrationStatus[] {
       ],
       detail: config.mercadoLivreAccessToken
         ? mercadoLivreAffiliateLinks
-          ? 'Catálogo oficial autenticado e resolvedor autorizado de afiliação configurados. Nenhuma API terceirizada paga é obrigatória.'
-          : 'Catálogo oficial autenticado pronto. A busca funciona sem serviço terceirizado pago; a comissão automática exige um método autorizado pelo programa de afiliados.'
+          ? 'Busca oficial autenticada e resolvedor autorizado de afiliação configurados. Nenhuma API terceirizada paga é obrigatória.'
+          : 'Busca oficial autenticada pronta. A busca funciona sem serviço terceirizado pago; a comissão automática exige um método autorizado pelo programa de afiliados.'
         : mercadoLivreAffiliateLinks
-          ? 'Busca de catálogo ativa e resolvedor autorizado de afiliação configurado. Nenhuma API terceirizada paga é obrigatória.'
-          : 'Busca de catálogo ativa. Para gerar comissão automaticamente, conecte a conta de afiliado a um método autorizado de geração de links.'
+          ? 'Busca publica ativa e resolvedor autorizado de afiliação configurado. Nenhuma API terceirizada paga é obrigatória.'
+          : 'Busca publica ativa. Para gerar comissão automaticamente, conecte a conta de afiliado a um método autorizado de geração de links.'
     },
     {
       marketplace: 'amazon',
@@ -78,8 +78,8 @@ export function getMarketplaceStatuses(): MarketplaceIntegrationStatus[] {
       detail: amazonOfficialReady
         ? 'Amazon Creators API configurada com OAuth 2.0 e Partner Tag. A integração não depende de API terceirizada paga.'
         : config.amazonPartnerTag
-          ? 'Partner Tag configurada e busca de catálogo com fallback disponível. Quando sua conta liberar a Creators API, adicione as credenciais para usar o catálogo oficial.'
-          : 'Catálogo pode ser consultado, mas links com comissão exigem uma Partner Tag válida do Programa de Associados da Amazon.'
+          ? 'Busca publica ativa com Partner Tag e fallback de catálogo disponível. Quando sua conta liberar a Amazon Creators API, adicione as credenciais para usar o catálogo oficial.'
+          : 'Busca publica ativa. O catálogo pode ser consultado, mas links com comissão exigem uma Partner Tag válida do Programa de Associados da Amazon.'
     },
     {
       marketplace: 'shopee',
