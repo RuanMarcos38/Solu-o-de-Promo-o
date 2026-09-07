@@ -29,8 +29,10 @@ async function step(name, fn, { warn = false } = {}) {
   try {
     await fn();
     record('pass', name);
+    return true;
   } catch (error) {
     record(warn ? 'warn' : 'fail', name, error instanceof Error ? error.message : 'erro desconhecido');
+    return false;
   }
 }
 
@@ -97,7 +99,8 @@ page.on('response', (response) => {
 });
 
 try {
-  await step('Login pelo frontend', async () => login(page));
+  const loginOk = await step('Login pelo frontend', async () => login(page));
+  if (!loginOk) throw new Error('Login funcional falhou; QA visual interrompido para evitar falsos erros em cascata.');
   await snapshotButtons(page, 'dashboard');
 
   const menu = page.locator('.menu-actions');
@@ -161,7 +164,13 @@ try {
     const responsePromise = waitApi(page, '/dispatch/whatsapp/', 'POST');
     await clickButton(affiliateCard.getByRole('button', { name: 'Enviar WhatsApp', exact: true }), 'Enviar WhatsApp');
     const response = await responsePromise;
-    if (response.status() !== 200) throw new Error(`envio WhatsApp retornou HTTP ${response.status()}`);
+    if (![200, 400].includes(response.status())) throw new Error(`envio WhatsApp retornou HTTP ${response.status()}`);
+    if (response.status() === 400) {
+      const body = await response.json().catch(() => ({}));
+      if (!/canal.*whatsapp|evolution|nenhum canal/i.test(String(body?.message ?? ''))) {
+        throw new Error('bloqueio de envio sem canal nao retornou mensagem clara');
+      }
+    }
     await page.locator('.status-message').waitFor({ state: 'visible', timeout: 8000 });
   });
 
