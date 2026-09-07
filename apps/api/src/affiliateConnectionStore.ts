@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { config } from './config.js';
 import { prisma } from './db.js';
+import { fetchExternal } from './http.js';
 import { decryptSensitiveConfig, encryptSensitiveConfig, summarizeSensitiveConfig } from './secrets.js';
 
 export type AffiliateMarketplace = 'mercadolivre' | 'shopee' | 'amazon';
@@ -173,6 +174,62 @@ export async function hydrateAffiliateRuntimeConfig() {
   } catch {
     // Mantém os valores de ambiente se o banco estiver temporariamente indisponível.
   }
+}
+
+export async function getValidMercadoLivreAccessToken(forceRefresh = false) {
+  const { row, store } = await readStore();
+  const connection = decryptSensitiveConfig(store.mercadolivre);
+  const accessToken = text(connection.accessToken) ?? config.mercadoLivreAccessToken;
+  const expiresAtRaw = text(connection.tokenExpiresAt);
+  const expiresAt = expiresAtRaw ? Date.parse(expiresAtRaw) : Number.NaN;
+  const tokenStillValid = accessToken && (!Number.isFinite(expiresAt) || expiresAt > Date.now() + 60_000);
+
+  if (!forceRefresh && tokenStillValid) return accessToken;
+
+  const refreshToken = text(connection.refreshToken);
+  const clientId = text(connection.clientId);
+  const clientSecret = text(connection.clientSecret);
+  if (!refreshToken || !clientId || !clientSecret) return accessToken;
+
+  const tokenBody = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken
+  });
+  const response = await fetchExternal('https://api.mercadolibre.com/oauth/token', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: tokenBody.toString()
+  });
+  if (!response.ok) {
+    throw Object.assign(new Error(`Mercado Livre recusou a renovação OAuth (HTTP ${response.status}). Reconecte a conta.`), { statusCode: 502 });
+  }
+
+  const token = await response.json() as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    user_id?: number | string;
+    scope?: string;
+  };
+  if (!token.access_token) throw Object.assign(new Error('Mercado Livre não retornou novo access token.'), { statusCode: 502 });
+
+  await saveAffiliateConnectionConfig('mercadolivre', {
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token ?? refreshToken,
+    externalUserId: token.user_id ? String(token.user_id) : connection.externalUserId,
+    scope: token.scope ?? connection.scope,
+    tokenExpiresAt: token.expires_in
+      ? new Date(Date.now() + token.expires_in * 1000).toISOString()
+      : connection.tokenExpiresAt
+  }, row?.updatedBy ?? 'system-oauth-refresh');
+
+  config.mercadoLivreAccessToken = token.access_token;
+  return token.access_token;
 }
 
 function configuredStatus(

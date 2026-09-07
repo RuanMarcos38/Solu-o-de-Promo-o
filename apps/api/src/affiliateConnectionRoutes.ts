@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -6,6 +6,7 @@ import { isMarketplaceAffiliateUrl, resolveAffiliateLink } from './affiliate.js'
 import {
   getAffiliateConnectionConfig,
   getAffiliateConnectionStatuses,
+  getValidMercadoLivreAccessToken,
   removeAffiliateConnectionConfig,
   saveAffiliateConnectionConfig,
   type AffiliateMarketplace
@@ -142,6 +143,97 @@ async function consumeOauthState(state: string) {
   return { userId };
 }
 
+async function testMercadoLivreConnection() {
+  let accessToken = await getValidMercadoLivreAccessToken();
+  if (!accessToken) {
+    throw Object.assign(new Error('Conecte sua conta do Mercado Livre pelo OAuth antes de testar a sessão.'), { statusCode: 409 });
+  }
+
+  let response = await fetchExternal('https://api.mercadolibre.com/users/me', {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (response.status === 401) {
+    accessToken = await getValidMercadoLivreAccessToken(true);
+    if (accessToken) {
+      response = await fetchExternal('https://api.mercadolibre.com/users/me', {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${accessToken}` }
+      });
+    }
+  }
+
+  if (!response.ok) {
+    throw Object.assign(new Error(`Mercado Livre não validou a sessão OAuth (HTTP ${response.status}). Reconecte a conta.`), { statusCode: 502 });
+  }
+
+  const account = await response.json() as { id?: number | string; nickname?: string; email?: string };
+  return {
+    ok: true,
+    marketplace: 'mercadolivre',
+    message: account.nickname
+      ? `Mercado Livre conectado como ${account.nickname}.`
+      : 'Mercado Livre conectado e sessão OAuth válida.',
+    account: {
+      id: account.id ? String(account.id) : undefined,
+      nickname: account.nickname,
+      email: account.email
+    }
+  };
+}
+
+async function testShopeeConnection() {
+  const appId = config.shopeeAppId?.trim();
+  const secret = config.shopeeSecret?.trim();
+  const endpoint = config.shopeeEndpoint?.trim();
+  if (!appId || !secret || !endpoint) {
+    throw Object.assign(new Error('Configure App ID e Secret da Shopee Affiliate Open API antes de testar.'), { statusCode: 409 });
+  }
+
+  const query = `query ProductOffers($keyword: String!, $page: Int!, $limit: Int!) {
+    productOfferV2(keyword: $keyword, page: $page, limit: $limit) {
+      nodes { itemId productName offerLink }
+      pageInfo { page limit hasNextPage }
+    }
+  }`;
+  const payload = JSON.stringify({
+    query,
+    variables: { keyword: 'oferta', page: 1, limit: 1 }
+  });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = createHash('sha256').update(`${appId}${timestamp}${payload}${secret}`).digest('hex');
+  const authorization = `SHA256 Credential=${appId}, Timestamp=${timestamp}, Signature=${signature}`;
+
+  const response = await fetchExternal(endpoint, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: authorization
+    },
+    body: payload
+  });
+
+  if (!response.ok) {
+    throw Object.assign(new Error(`Shopee Affiliate Open API recusou as credenciais (HTTP ${response.status}).`), { statusCode: 502 });
+  }
+
+  const result = await response.json() as {
+    data?: { productOfferV2?: { nodes?: Array<{ itemId?: string | number; offerLink?: string }> } };
+    errors?: Array<{ message?: string }>;
+  };
+  if (result.errors?.length) {
+    const detail = result.errors.map((item) => item.message).filter(Boolean).join('; ') || 'credenciais não validadas';
+    throw Object.assign(new Error(`Shopee Affiliate Open API: ${detail}`), { statusCode: 502 });
+  }
+
+  return {
+    ok: true,
+    marketplace: 'shopee',
+    message: 'Shopee Affiliate Open API conectada e credenciais validadas.',
+    sampleOffers: result.data?.productOfferV2?.nodes?.length ?? 0
+  };
+}
+
 export async function registerAffiliateConnectionRoutes(app: FastifyInstance) {
   app.get('/affiliate/connections', async (request) => {
     await requireAuth(request);
@@ -163,6 +255,16 @@ export async function registerAffiliateConnectionRoutes(app: FastifyInstance) {
     return {
       connections: await removeAffiliateConnectionConfig(marketplace, currentUser.id)
     };
+  });
+
+  app.post('/affiliate/connections/mercadolivre/test', async (request) => {
+    await requireAdmin(request);
+    return testMercadoLivreConnection();
+  });
+
+  app.post('/affiliate/connections/shopee/test', async (request) => {
+    await requireAdmin(request);
+    return testShopeeConnection();
   });
 
   app.post('/affiliate/connections/mercadolivre/oauth/start', async (request) => {

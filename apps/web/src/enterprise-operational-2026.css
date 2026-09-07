@@ -556,7 +556,11 @@ textarea:focus {
 
 /* Central de afiliados */
 .affiliate-hub-launcher {
-  display: none !important;
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 190 !important;
 }
 
 .affiliate-hub-overlay {

@@ -153,7 +153,7 @@ export function App() {
 
   async function apiFetch(path: string, options: RequestInit = {}) {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers as Record<string, string> | undefined)
     };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -444,23 +444,28 @@ export function App() {
   }
 
   async function createChannel(type: string) {
-    let parsedConfig: Record<string, unknown>;
-    try {
-      parsedConfig = JSON.parse(channelConfig) as Record<string, unknown>;
-    } catch {
-      setStatusMessage('Configuração JSON do canal é inválida.');
-      return;
-    }
+  let parsedConfig: Record<string, unknown>;
+  try {
+    parsedConfig = JSON.parse(channelConfig) as Record<string, unknown>;
+  } catch {
+    setStatusMessage('Configuração JSON do canal é inválida.');
+    return;
+  }
 
+  setStatusMessage('');
+  try {
     await apiFetch('/dispatch/channels', {
       method: 'POST',
       body: JSON.stringify({ name: `Canal ${type}`, type, config: parsedConfig })
     });
     setStatusMessage(`Canal ${type} criado com configuração protegida.`);
     await loadAdminData();
+  } catch (error) {
+    setStatusMessage(error instanceof Error ? error.message : 'Não foi possível criar o canal.');
   }
+}
 
-  async function toggleChannel(channel: DispatchChannel) {
+async function toggleChannel(channel: DispatchChannel) {
     await apiFetch(`/dispatch/channels/${channel.id}`, {
       method: 'PUT',
       body: JSON.stringify({ isActive: !channel.isActive })
