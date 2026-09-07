@@ -197,6 +197,11 @@ await check('Iniciar OAuth Mercado Livre', '/affiliate/connections/mercadolivre/
   if (url.hostname !== 'auth.mercadolivre.com.br') throw new Error('URL OAuth nao aponta para Mercado Livre');
   if (!url.searchParams.get('state')) throw new Error('OAuth sem state');
 });
+await check('Teste Mercado Livre exige sessao OAuth', '/affiliate/connections/mercadolivre/test', {
+  method: 'POST', body: {}
+}, [409], (body) => {
+  if (!/oauth|conect/i.test(String(body?.message ?? ''))) throw new Error('bloqueio de sessao OAuth sem mensagem clara');
+});
 
 await check('Salvar configuracao Shopee', '/affiliate/connections/shopee', {
   method: 'PUT',
@@ -206,6 +211,11 @@ await check('Salvar configuracao Shopee', '/affiliate/connections/shopee', {
     endpoint: 'https://open-api.affiliate.shopee.com.br/graphql'
   }
 }, [200]);
+await check('Teste Shopee exige credenciais oficiais', '/affiliate/connections/shopee/test', {
+  method: 'POST', body: {}
+}, [409], (body) => {
+  if (!/app id|secret|configure/i.test(String(body?.message ?? ''))) throw new Error('bloqueio Shopee sem mensagem clara');
+});
 await check('Salvar configuracao Amazon', '/affiliate/connections/amazon', {
   method: 'PUT',
   body: {
@@ -227,7 +237,7 @@ if (pendingMl?.id) {
     body: { affiliateUrl: 'https://www.mercadolivre.com.br/qa-link-afiliado-validado' }
   }, [200]);
 } else {
-  record('warn', 'Vincular link afiliado manual', 'Oferta Mercado Livre pendente nao encontrada na massa QA');
+  record('fail', 'Vincular link afiliado manual', 'Oferta Mercado Livre pendente nao encontrada na massa QA');
 }
 
 await check('Afiliacao em lote', '/affiliate/batch/resolve', {
@@ -240,16 +250,24 @@ await check('Afiliacao em lote', '/affiliate/batch/resolve', {
 });
 
 if (affiliateMl?.id) {
-  await check('Disparo WhatsApp por oferta', `/dispatch/whatsapp/${encodeURIComponent(affiliateMl.id)}`, {
+  await check('Disparo WhatsApp exige canal ativo', `/dispatch/whatsapp/${encodeURIComponent(affiliateMl.id)}`, {
     method: 'POST',
     body: {}
-  }, [200]);
-  await check('Automacao afiliado + WhatsApp', `/automation/affiliate-whatsapp/${encodeURIComponent(affiliateMl.id)}`, {
+  }, [200, 400], (body, response) => {
+    if (response.status === 400 && !/canal.*whatsapp|evolution|nenhum canal/i.test(String(body?.message ?? ''))) {
+      throw new Error('bloqueio sem canal ativo nao retornou mensagem clara');
+    }
+  });
+  await check('Automacao exige grupo ou canal ativo', `/automation/affiliate-whatsapp/${encodeURIComponent(affiliateMl.id)}`, {
     method: 'POST',
     body: {}
-  }, [200]);
+  }, [200, 409], (body, response) => {
+    if (response.status === 409 && !/grupo|canal.*whatsapp|evolution/i.test(String(body?.message ?? ''))) {
+      throw new Error('automacao sem grupo/canal nao retornou mensagem clara');
+    }
+  });
 } else {
-  record('warn', 'Fluxos WhatsApp', 'Oferta afiliada QA nao encontrada');
+  record('fail', 'Fluxos WhatsApp', 'Oferta afiliada QA nao encontrada');
 }
 
 await check('Validacao de oferta inexistente', '/affiliate/offers/qa-inexistente/manual-link', {
