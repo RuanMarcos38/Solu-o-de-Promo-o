@@ -1,0 +1,43 @@
+name: Security deps autofix
+
+on:
+  push:
+    branches: [qa/full-button-backend-audit]
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/full-button-backend-audit
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --loglevel=error
+      - name: Atualizar Fastify e vulnerabilidades de produção
+        run: |
+          npm install fastify@5.12.3 -w apps/api --save-exact
+          npm audit fix --omit=dev --audit-level=high || true
+          npm audit --omit=dev --omit=optional --audit-level=high
+      - name: Validar build
+        run: |
+          npm run db:generate
+          npm run build -w apps/api
+          npm run build -w apps/web
+      - name: Commitar lockfile atualizado
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/package.json package-lock.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Atualiza dependencias vulneraveis de producao'
+          git push origin HEAD:qa/full-button-backend-audit
