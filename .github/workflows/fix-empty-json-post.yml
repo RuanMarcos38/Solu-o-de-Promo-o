@@ -24,45 +24,46 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
-          def replace_once(path, old, new):
+          def patch(path, pattern, transform, label):
               p = Path(path)
               text = p.read_text()
-              if old not in text:
-                  raise SystemExit(f'Padrão não encontrado em {path}')
-              p.write_text(text.replace(old, new, 1))
+              match = re.search(pattern, text, flags=re.S)
+              if not match:
+                  raise SystemExit(f'Padrão não encontrado: {label}')
+              replacement = transform(match)
+              p.write_text(text[:match.start()] + replacement + text[match.end():])
 
-          replace_once(
+          patch(
               'apps/web/src/App.tsx',
-              """    const headers: Record<string, string> = {
-              'Content-Type': 'application/json',
-              ...(options.headers as Record<string, string> | undefined)
-            };""",
-              """    const headers: Record<string, string> = {
-              ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-              ...(options.headers as Record<string, string> | undefined)
-            };"""
+              r"async function apiFetch\(path: string, options: RequestInit = \{\}\) \{.*?const headers: Record<string, string> = \{\s*'Content-Type': 'application/json',\s*\.\.\.\(options\.headers as Record<string, string> \| undefined\)\s*\};",
+              lambda m: m.group(0).replace(
+                  "'Content-Type': 'application/json',",
+                  "...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),",
+                  1
+              ),
+              'apiFetch App.tsx'
           )
 
-          replace_once(
+          patch(
               'apps/web/src/AffiliateHub.tsx',
-              """      headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-                ...(options.headers ?? {})
-              }""",
-              """      headers: {
-                ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-                Authorization: `Bearer ${token}`,
-                ...(options.headers ?? {})
-              }"""
+              r"async function request\(path: string, options: RequestInit = \{\}\) \{.*?headers: \{\s*'Content-Type': 'application/json',\s*Authorization: `Bearer \$\{token\}`,\s*\.\.\.\(options\.headers \?\? \{\}\)\s*\}",
+              lambda m: m.group(0).replace(
+                  "'Content-Type': 'application/json',",
+                  "...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),",
+                  1
+              ),
+              'request AffiliateHub.tsx'
           )
 
-          replace_once(
-              'scripts/qa-ui-buttons.mjs',
-              """  const ignoredInventory = /^(?:(?:Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando|Atualizando)\.\.|Ativar|Desativar|IAAutomação|AFCentral de Afiliados)$/i;""",
-              """  const ignoredInventory = /^(?:(?:Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando|Atualizando)\.\.\.|Ativar|Desativar|IAAutomação|AFCentral de Afiliados)$/i;"""
-          )
+          p = Path('scripts/qa-ui-buttons.mjs')
+          text = p.read_text()
+          old = r"(?:Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando|Atualizando)\.\."
+          new = r"(?:Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando|Atualizando)\.\.\."
+          if old not in text:
+              raise SystemExit('Padrão de inventário dinâmico não encontrado')
+          p.write_text(text.replace(old, new, 1))
           PY
       - name: Instalar dependências
         run: npm ci --loglevel=error
