@@ -24,19 +24,19 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
-          def replace_once(path, old, new):
+          def sub_once(path, pattern, replacement):
               p = Path(path)
               text = p.read_text()
-              if old not in text:
-                  raise SystemExit(f'Padrão não encontrado em {path}')
-              p.write_text(text.replace(old, new, 1))
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f'Padrão não encontrado ou ambíguo em {path}: {pattern[:80]}')
+              p.write_text(updated)
 
-          replace_once(
+          sub_once(
               'apps/api/src/bootstrap.ts',
-              """async function validateConfiguredUrl(value: unknown) {
-            if (typeof value === 'string' && value.trim()) await assertSafeOutboundUrl(value.trim());
-          }""",
+              r"async function validateConfiguredUrl\(value: unknown\) \{.*?\n\}",
               """async function validateConfiguredUrl(value: unknown) {
             if (typeof value !== 'string' || !value.trim()) return;
             try {
@@ -48,15 +48,19 @@ jobs:
           }"""
           )
 
-          replace_once(
+          sub_once(
               'apps/web/src/App.tsx',
-              """    await apiFetch('/dispatch/channels', {
-              method: 'POST',
-              body: JSON.stringify({ name: `Canal ${type}`, type, config: parsedConfig })
-            });
-            setStatusMessage(`Canal ${type} criado com configuração protegida.`);
-            await loadAdminData();""",
-              """    setStatusMessage('');
+              r"  async function createChannel\(type: string\) \{.*?\n  \}\n\n  async function toggleChannel",
+              """  async function createChannel(type: string) {
+            let parsedConfig: Record<string, unknown>;
+            try {
+              parsedConfig = JSON.parse(channelConfig) as Record<string, unknown>;
+            } catch {
+              setStatusMessage('Configuração JSON do canal é inválida.');
+              return;
+            }
+
+            setStatusMessage('');
             try {
               await apiFetch('/dispatch/channels', {
                 method: 'POST',
@@ -66,15 +70,17 @@ jobs:
               await loadAdminData();
             } catch (error) {
               setStatusMessage(error instanceof Error ? error.message : 'Não foi possível criar o canal.');
-            }"""
+            }
+          }
+
+          async function toggleChannel"""
           )
 
-          replace_once(
+          sub_once(
               'apps/web/src/enterprise-operational-2026.css',
-              """.affiliate-hub-launcher {
-            display: none !important;
-          }""",
-              """.affiliate-hub-launcher {
+              r"/\* Central de afiliados \*/\s*\.affiliate-hub-launcher \{.*?\}",
+              """/* Central de afiliados */
+          .affiliate-hub-launcher {
             display: inline-flex !important;
             visibility: visible !important;
             opacity: 1 !important;
@@ -83,44 +89,37 @@ jobs:
           }"""
           )
 
-          replace_once(
+          sub_once(
               'scripts/qa-ui-buttons.mjs',
-              """      const body = await response.json().catch(() => ({}));
-              if (!/canal.*whatsapp|evolution|nenhum canal/i.test(String(body?.message ?? ''))) {
-                throw new Error('bloqueio de envio sem canal nao retornou mensagem clara');
-              }""",
-              """      const body = await response.json().catch(() => ({}));
-              if (!/canal|whatsapp|evolution|afiliar|afiliad/i.test(String(body?.message ?? ''))) {
-                throw new Error('bloqueio de envio sem canal ou afiliação não retornou mensagem clara');
+              r"if \(response\.status\(\) === 400\) \{\s*const body = await response\.json\(\)\.catch\(\(\) => \(\{\}\)\);\s*if \(!/canal\.\*whatsapp\|evolution\|nenhum canal/i\.test\(String\(body\?\.message \?\? ''\)\)\) \{\s*throw new Error\('bloqueio de envio sem canal nao retornou mensagem clara'\);\s*\}\s*\}",
+              """if (response.status() === 400) {
+                const body = await response.json().catch(() => ({}));
+                if (!/canal|whatsapp|evolution|afiliar|afiliad/i.test(String(body?.message ?? ''))) {
+                  throw new Error('bloqueio de envio sem canal ou afiliação não retornou mensagem clara');
+                }
               }"""
           )
 
-          replace_once(
+          sub_once(
               'scripts/qa-ui-buttons.mjs',
+              r"    await step\(`Criar canal \$\{type\}`, async \(\) => \{\s*const responsePromise = waitApi\(page, '/dispatch/channels', 'POST'\);\s*await clickButton\(page\.getByRole\('button', \{ name: createButton, exact: true \}\), createButton\);\s*const response = await responsePromise;\s*if \(!\[200, 201\]\.includes\(response\.status\(\)\)\) throw new Error\(`criar canal \$\{type\} HTTP \$\{response\.status\(\)\}`\);\s*\}\);",
               """    await step(`Criar canal ${type}`, async () => {
-              const responsePromise = waitApi(page, '/dispatch/channels', 'POST');
-              await clickButton(page.getByRole('button', { name: createButton, exact: true }), createButton);
-              const response = await responsePromise;
-              if (![200, 201].includes(response.status())) throw new Error(`criar canal ${type} HTTP ${response.status()}`);
-            });""",
-              """    await step(`Criar canal ${type}`, async () => {
-              if (type === 'webhook') {
-                await textarea.fill('{\"url\":\"https://example.com/qa-webhook\"}');
-              }
-              if (type === 'evolution') {
-                await textarea.fill('{\"baseUrl\":\"https://example.com\",\"apiKey\":\"qa-key\",\"instanceName\":\"qa-instance\",\"number\":\"5511999999999\",\"audience\":\"private\"}');
-              }
-              const responsePromise = waitApi(page, '/dispatch/channels', 'POST');
-              await clickButton(page.getByRole('button', { name: createButton, exact: true }), createButton);
-              const response = await responsePromise;
-              if (![200, 201].includes(response.status())) throw new Error(`criar canal ${type} HTTP ${response.status()}`);
-            });"""
+                if (type === 'webhook') {
+                  await textarea.fill('{\"url\":\"https://example.com/qa-webhook\"}');
+                }
+                if (type === 'evolution') {
+                  await textarea.fill('{\"baseUrl\":\"https://example.com\",\"apiKey\":\"qa-key\",\"instanceName\":\"qa-instance\",\"number\":\"5511999999999\",\"audience\":\"private\"}');
+                }
+                const responsePromise = waitApi(page, '/dispatch/channels', 'POST');
+                await clickButton(page.getByRole('button', { name: createButton, exact: true }), createButton);
+                const response = await responsePromise;
+                if (![200, 201].includes(response.status())) throw new Error(`criar canal ${type} HTTP ${response.status()}`);
+              });"""
           )
 
-          replace_once(
+          sub_once(
               'scripts/qa-backend-functional.mjs',
-              """await check('Listar canais', '/dispatch/channels');
-          await check('Historico de envios', '/dispatch/logs?limit=20');""",
+              r"await check\('Listar canais', '/dispatch/channels'\);\s*await check\('Historico de envios', '/dispatch/logs\?limit=20'\);",
               """await check('Listar canais', '/dispatch/channels');
           await check('Rejeitar URL inválida de canal com erro de validação', '/dispatch/channels', {
             method: 'POST',
