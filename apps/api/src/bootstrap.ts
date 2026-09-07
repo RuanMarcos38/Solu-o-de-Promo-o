@@ -209,7 +209,13 @@ function getRequestOrigin(request: { headers: Record<string, unknown> }) {
 }
 
 async function validateConfiguredUrl(value: unknown) {
-  if (typeof value === 'string' && value.trim()) await assertSafeOutboundUrl(value.trim());
+  if (typeof value !== 'string' || !value.trim()) return;
+  try {
+    await assertSafeOutboundUrl(value.trim());
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'URL externa inválida';
+    throw Object.assign(new Error(`URL do canal inválida ou inacessível: ${detail}`), { statusCode: 400 });
+  }
 }
 
 async function validateChannelConfig(type: string, channelConfig: Record<string, unknown>) {

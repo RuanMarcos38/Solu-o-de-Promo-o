@@ -146,6 +146,15 @@ if (channelId) {
   record('fail', 'Alternar canal', 'ID do canal nao retornado');
 }
 await check('Listar canais', '/dispatch/channels');
+await check('Rejeitar URL inválida de canal com erro de validação', '/dispatch/channels', {
+  method: 'POST',
+  body: {
+    name: `QA URL inválida ${runId}`,
+    type: 'webhook',
+    isActive: true,
+    config: { url: 'https://host-inexistente-qa.invalid/webhook' }
+  }
+}, [400]);
 await check('Historico de envios', '/dispatch/logs?limit=20');
 
 const qaUserEmail = `qa-${runId}@test.local`;

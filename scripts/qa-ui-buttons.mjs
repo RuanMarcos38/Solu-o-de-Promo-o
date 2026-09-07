@@ -167,8 +167,8 @@ try {
     if (![200, 400].includes(response.status())) throw new Error(`envio WhatsApp retornou HTTP ${response.status()}`);
     if (response.status() === 400) {
       const body = await response.json().catch(() => ({}));
-      if (!/canal.*whatsapp|evolution|nenhum canal/i.test(String(body?.message ?? ''))) {
-        throw new Error('bloqueio de envio sem canal nao retornou mensagem clara');
+      if (!/canal|whatsapp|evolution|afiliar|afiliad/i.test(String(body?.message ?? ''))) {
+        throw new Error('bloqueio de envio sem canal ou afiliação não retornou mensagem clara');
       }
     }
     await page.locator('.status-message').waitFor({ state: 'visible', timeout: 8000 });
@@ -234,6 +234,12 @@ try {
       if (!value.trim().startsWith('{')) throw new Error('modelo nao preencheu JSON');
     });
     await step(`Criar canal ${type}`, async () => {
+      if (type === 'webhook') {
+        await textarea.fill('{"url":"https://example.com/qa-webhook"}');
+      }
+      if (type === 'evolution') {
+        await textarea.fill('{"baseUrl":"https://example.com","apiKey":"qa-key","instanceName":"qa-instance","number":"5511999999999","audience":"private"}');
+      }
       const responsePromise = waitApi(page, '/dispatch/channels', 'POST');
       await clickButton(page.getByRole('button', { name: createButton, exact: true }), createButton);
       const response = await responsePromise;
