@@ -1,5 +1,3 @@
-const apiUrl = (import.meta.env.VITE_API_URL ?? 'https://api-ofertas.r2rmarketingdigital.com.br').replace(/\/$/, '');
-
 function findButtonByText(root: ParentNode, text: string) {
   return Array.from(root.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.trim() === text);
 }
@@ -7,44 +5,6 @@ function findButtonByText(root: ParentNode, text: string) {
 function openAffiliateHub() {
   const launcher = document.querySelector<HTMLButtonElement>('.affiliate-hub-launcher');
   launcher?.click();
-}
-
-async function testConnection(marketplace: 'mercadolivre' | 'shopee', button: HTMLButtonElement) {
-  const token = sessionStorage.getItem('promo_token');
-  if (!token) return;
-
-  const original = button.textContent;
-  button.disabled = true;
-  button.textContent = 'Testando...';
-
-  try {
-    const response = await fetch(`${apiUrl}/affiliate/connections/${marketplace}/test`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      }
-    });
-    const data = await response.json().catch(() => ({})) as { message?: string };
-    if (!response.ok) throw new Error(data.message || `Erro HTTP ${response.status}`);
-
-    const panel = button.closest('.affiliate-hub-panel');
-    panel?.querySelector('.enterprise-connection-result')?.remove();
-    const result = document.createElement('div');
-    result.className = 'enterprise-connection-result success';
-    result.textContent = data.message || 'Conexão validada com sucesso.';
-    panel?.querySelector('.affiliate-hub-security')?.insertAdjacentElement('afterend', result);
-  } catch (error) {
-    const panel = button.closest('.affiliate-hub-panel');
-    panel?.querySelector('.enterprise-connection-result')?.remove();
-    const result = document.createElement('div');
-    result.className = 'enterprise-connection-result error';
-    result.textContent = error instanceof Error ? error.message : 'Não foi possível validar a conexão.';
-    panel?.querySelector('.affiliate-hub-security')?.insertAdjacentElement('afterend', result);
-  } finally {
-    button.disabled = false;
-    button.textContent = original || 'Testar conexão';
-  }
 }
 
 function enhanceAffiliateHub() {
@@ -61,25 +21,6 @@ function enhanceAffiliateHub() {
         portalLink.href = 'https://affiliate.shopee.com.br/open_api';
         portalLink.textContent = 'Entrar na Shopee Afiliados';
       }
-      if (!actions.querySelector('[data-test-connection="shopee"]')) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'secondary enterprise-test-button';
-        button.dataset.testConnection = 'shopee';
-        button.textContent = 'Testar conexão';
-        button.addEventListener('click', () => void testConnection('shopee', button));
-        actions.appendChild(button);
-      }
-    }
-
-    if (marketplaceName === 'mercado livre' && !actions.querySelector('[data-test-connection="mercadolivre"]')) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'secondary enterprise-test-button';
-      button.dataset.testConnection = 'mercadolivre';
-      button.textContent = 'Testar conexão';
-      button.addEventListener('click', () => void testConnection('mercadolivre', button));
-      actions.appendChild(button);
     }
   }
 }
