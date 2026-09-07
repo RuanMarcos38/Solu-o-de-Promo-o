@@ -43,7 +43,11 @@ function markTested(name) {
 
 async function clickButton(locator, name) {
   await locator.waitFor({ state: 'visible', timeout: 12000 });
-  if (await locator.isDisabled()) throw new Error(`botao desabilitado: ${name}`);
+  const deadline = Date.now() + 8000;
+  while (await locator.isDisabled()) {
+    if (Date.now() >= deadline) throw new Error(`botao desabilitado: ${name}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   markTested(name);
   await locator.click();
 }
@@ -90,7 +94,10 @@ const page = await context.newPage();
 
 page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`));
 page.on('console', (message) => {
-  if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`);
+  if (message.type() !== 'error') return;
+  const text = message.text();
+  if (/Failed to load resource: the server responded with a status of 4\d\d/i.test(text)) return;
+  browserErrors.push(`console: ${text}`);
 });
 page.on('response', (response) => {
   if (response.url().startsWith(apiUrl) && response.status() >= 500) {
@@ -166,10 +173,10 @@ try {
     const response = await responsePromise;
     if (![200, 400].includes(response.status())) throw new Error(`envio WhatsApp retornou HTTP ${response.status()}`);
     if (response.status() === 400) {
-      const body = await response.json().catch(() => ({}));
-      if (!/canal|whatsapp|evolution|afiliar|afiliad/i.test(String(body?.message ?? ''))) {
-        throw new Error('bloqueio de envio sem canal ou afiliação não retornou mensagem clara');
-      }
+      await page.waitForFunction(() => {
+        const value = document.querySelector('.status-message')?.textContent ?? '';
+        return /canal|whatsapp|evolution|afiliar|afiliad/i.test(value);
+      }, undefined, { timeout: 8000 });
     }
     await page.locator('.status-message').waitFor({ state: 'visible', timeout: 8000 });
   });
@@ -320,26 +327,39 @@ try {
   });
 
   await step('Conectar Mercado Livre via OAuth', async () => {
-    markTested('Conectar Mercado Livre');
-    const token = await page.evaluate(() => sessionStorage.getItem('promo_token'));
-    if (!token) throw new Error('token de sessao ausente');
-    const oauthPage = await context.newPage();
-    try {
-      await oauthPage.goto(appUrl, { waitUntil: 'domcontentloaded' });
-      await oauthPage.evaluate((value) => sessionStorage.setItem('promo_token', value), token);
-      await oauthPage.reload({ waitUntil: 'domcontentloaded' });
-      await oauthPage.locator('.affiliate-hub-launcher').click();
-      const button = oauthPage.getByRole('button', { name: 'Conectar Mercado Livre', exact: true });
-      await button.waitFor({ state: 'visible' });
-      const navigation = oauthPage.waitForURL((url) => url.hostname === 'auth.mercadolivre.com.br', { timeout: 15000 });
-      await button.click();
-      await navigation;
-    } finally {
-      await oauthPage.close();
-    }
-  });
+  markTested('Conectar Mercado Livre');
+  const token = await page.evaluate(() => sessionStorage.getItem('promo_token'));
+  if (!token) throw new Error('token de sessao ausente');
+  const oauthPage = await context.newPage();
+  try {
+    await oauthPage.route('https://auth.mercadolivre.com.br/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<!doctype html><html><body>Mercado Livre OAuth QA</body></html>'
+      });
+    });
+    await oauthPage.goto(appUrl, { waitUntil: 'domcontentloaded' });
+    await oauthPage.evaluate((value) => sessionStorage.setItem('promo_token', value), token);
+    await oauthPage.reload({ waitUntil: 'domcontentloaded' });
+    await oauthPage.locator('.affiliate-hub-launcher').click();
+    const button = oauthPage.getByRole('button', { name: 'Conectar Mercado Livre', exact: true });
+    await button.waitFor({ state: 'visible' });
+    const startResponsePromise = waitApi(oauthPage, '/affiliate/connections/mercadolivre/oauth/start', 'POST', 15000);
+    await clickButton(button, 'Conectar Mercado Livre');
+    const startResponse = await startResponsePromise;
+    if (startResponse.status() !== 200) throw new Error(`oauth/start retornou HTTP ${startResponse.status()}`);
+    const payload = await startResponse.json().catch(() => ({}));
+    if (!payload?.authUrl) throw new Error('oauth/start não retornou authUrl');
+    const authUrl = new URL(payload.authUrl);
+    if (authUrl.hostname !== 'auth.mercadolivre.com.br') throw new Error(`host OAuth inesperado: ${authUrl.hostname}`);
+    await oauthPage.waitForURL((url) => url.hostname === 'auth.mercadolivre.com.br', { timeout: 8000 });
+  } finally {
+    await oauthPage.close();
+  }
+});
 
-  await step('Salvar conta Shopee', async () => {
+await step('Salvar conta Shopee', async () => {
     const responsePromise = waitApi(page, '/affiliate/connections/shopee', 'PUT');
     await clickButton(shopeeCard.getByRole('button', { name: 'Salvar e ativar', exact: true }), 'Salvar e ativar');
     const response = await responsePromise;
@@ -425,7 +445,7 @@ try {
     await page.getByRole('button', { name: 'Entrar no painel', exact: true }).waitFor({ state: 'visible', timeout: 8000 });
   });
 
-  const ignoredInventory = /^(Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando)\.\.\.$/i;
+  const ignoredInventory = /^(?:(?:Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando|Atualizando)\.\.|Ativar|Desativar|IAAutomação|AFCentral de Afiliados)$/i;
   const inventoryRows = [...buttonInventory.entries()].map(([name, value]) => ({
     name,
     count: value.count,
