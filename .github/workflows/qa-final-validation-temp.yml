@@ -20,21 +20,15 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p = Path('scripts/qa-ui-buttons.mjs')
           text = p.read_text()
-          old = """    const startResponse = await startResponsePromise;
-    if (startResponse.status() !== 200) throw new Error(`oauth/start retornou HTTP ${startResponse.status()}`);
-    const payload = await startResponse.json().catch(() => ({}));
-    if (!payload?.authUrl) throw new Error('oauth/start não retornou authUrl');
-    const authUrl = new URL(payload.authUrl);
-    if (authUrl.hostname !== 'auth.mercadolivre.com.br') throw new Error(`host OAuth inesperado: ${authUrl.hostname}`);
-    await oauthPage.waitForURL((url) => url.hostname === 'auth.mercadolivre.com.br', { timeout: 8000 });"""
-          new = """    const startResponse = await startResponsePromise;
-    if (startResponse.status() !== 200) throw new Error(`oauth/start retornou HTTP ${startResponse.status()}`);
-    await oauthPage.waitForURL((url) => url.hostname === 'auth.mercadolivre.com.br', { timeout: 8000 });"""
-          if old not in text:
+          pattern = r"    const startResponse = await startResponsePromise;.*?await oauthPage\.waitForURL\(\(url\) => url\.hostname === 'auth\.mercadolivre\.com\.br', \{ timeout: 8000 \}\);"
+          replacement = "    const startResponse = await startResponsePromise;" + chr(10) + "    if (startResponse.status() !== 200) throw new Error(`oauth/start retornou HTTP ${startResponse.status()}`);" + chr(10) + "    await oauthPage.waitForURL((url) => url.hostname === 'auth.mercadolivre.com.br', { timeout: 8000 });"
+          updated, count = re.subn(pattern, lambda _m: replacement, text, count=1, flags=re.S)
+          if count != 1:
               raise SystemExit('Bloco OAuth não encontrado')
-          p.write_text(text.replace(old, new, 1))
+          p.write_text(updated)
           PY
           node --check scripts/qa-ui-buttons.mjs
       - name: Commitar correção
