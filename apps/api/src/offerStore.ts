@@ -14,6 +14,15 @@ const marketplaceMap: Record<string, Marketplace> = {
   other: Marketplace.OTHER
 };
 
+const apiMarketplaceMap: Record<Marketplace, string> = {
+  [Marketplace.MERCADO_LIVRE]: 'mercadolivre',
+  [Marketplace.AMAZON]: 'amazon',
+  [Marketplace.SHOPEE]: 'shopee',
+  [Marketplace.MAGALU]: 'magalu',
+  [Marketplace.ALIEXPRESS]: 'aliexpress',
+  [Marketplace.OTHER]: 'other'
+};
+
 export type OfferFilters = {
   keyword?: string;
   marketplace?: string;
@@ -25,10 +34,15 @@ export type OfferFilters = {
   includeUntracked?: boolean;
 };
 
+function marketplaceApiName(value: unknown) {
+  const enumValue = String(value) as Marketplace;
+  return apiMarketplaceMap[enumValue] ?? String(value).toLowerCase().replace(/_/g, '');
+}
+
 function toApiOffer(offer: any) {
   return {
     ...offer,
-    marketplace: String(offer.marketplace).toLowerCase(),
+    marketplace: marketplaceApiName(offer.marketplace),
     currentPrice: Number(offer.currentPrice),
     originalPrice: offer.originalPrice === null ? undefined : Number(offer.originalPrice),
     discountPercent: offer.discountPercent === null ? undefined : Number(offer.discountPercent),
@@ -165,6 +179,6 @@ export async function getStats() {
     totalOffers,
     bestScore: bestScore?.score ?? 0,
     bestDiscount: bestDiscount?.discountPercent ? Number(bestDiscount.discountPercent) : 0,
-    marketplaces: Object.fromEntries(byMarketplace.map((item) => [String(item.marketplace).toLowerCase(), item._count.marketplace]))
+    marketplaces: Object.fromEntries(byMarketplace.map((item) => [marketplaceApiName(item.marketplace), item._count.marketplace]))
   };
 }
