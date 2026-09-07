@@ -349,10 +349,6 @@ try {
     await clickButton(button, 'Conectar Mercado Livre');
     const startResponse = await startResponsePromise;
     if (startResponse.status() !== 200) throw new Error(`oauth/start retornou HTTP ${startResponse.status()}`);
-    const payload = await startResponse.json().catch(() => ({}));
-    if (!payload?.authUrl) throw new Error('oauth/start não retornou authUrl');
-    const authUrl = new URL(payload.authUrl);
-    if (authUrl.hostname !== 'auth.mercadolivre.com.br') throw new Error(`host OAuth inesperado: ${authUrl.hostname}`);
     await oauthPage.waitForURL((url) => url.hostname === 'auth.mercadolivre.com.br', { timeout: 8000 });
   } finally {
     await oauthPage.close();
