@@ -59,9 +59,7 @@ function enhanceAffiliateHub() {
       if (portalLink && portalLink.dataset.enterpriseReady !== 'true') {
         portalLink.dataset.enterpriseReady = 'true';
         portalLink.href = 'https://affiliate.shopee.com.br/open_api';
-        if (portalLink.textContent?.trim() !== 'Entrar na Shopee Afiliados') {
-          portalLink.textContent = 'Entrar na Shopee Afiliados';
-        }
+        portalLink.textContent = 'Entrar na Shopee Afiliados';
       }
       if (!actions.querySelector('[data-test-connection="shopee"]')) {
         const button = document.createElement('button');
@@ -74,21 +72,14 @@ function enhanceAffiliateHub() {
       }
     }
 
-    if (marketplaceName === 'mercado livre') {
-      const connectButton = findButtonByText(actions, 'Conectar Mercado Livre');
-      if (connectButton && connectButton.dataset.enterpriseReady !== 'true') {
-        connectButton.dataset.enterpriseReady = 'true';
-        connectButton.textContent = 'Entrar com Mercado Livre';
-      }
-      if (!actions.querySelector('[data-test-connection="mercadolivre"]')) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'secondary enterprise-test-button';
-        button.dataset.testConnection = 'mercadolivre';
-        button.textContent = 'Testar conexão';
-        button.addEventListener('click', () => void testConnection('mercadolivre', button));
-        actions.appendChild(button);
-      }
+    if (marketplaceName === 'mercado livre' && !actions.querySelector('[data-test-connection="mercadolivre"]')) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'secondary enterprise-test-button';
+      button.dataset.testConnection = 'mercadolivre';
+      button.textContent = 'Testar conexão';
+      button.addEventListener('click', () => void testConnection('mercadolivre', button));
+      actions.appendChild(button);
     }
   }
 }
@@ -97,10 +88,9 @@ function enhanceMarketplaceMenu() {
   const menu = document.querySelector<HTMLElement>('.menu-actions');
   if (!menu) return;
 
-  const marketplaceButton = findButtonByText(menu, 'Marketplaces') || findButtonByText(menu, 'Afiliados');
+  const marketplaceButton = findButtonByText(menu, 'Marketplaces');
   if (marketplaceButton && marketplaceButton.dataset.enterpriseReady !== 'true') {
     marketplaceButton.dataset.enterpriseReady = 'true';
-    if (marketplaceButton.textContent?.trim() !== 'Afiliados') marketplaceButton.textContent = 'Afiliados';
     marketplaceButton.title = 'Conectar contas de afiliado e acompanhar integrações';
   }
 
