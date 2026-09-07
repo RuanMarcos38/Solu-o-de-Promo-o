@@ -1,0 +1,79 @@
+name: Fix empty JSON POST
+
+on:
+  push:
+    branches: [qa/full-button-backend-audit]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/full-button-backend-audit
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Corrigir Content-Type em requisições sem corpo
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'Padrão não encontrado em {path}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'apps/web/src/App.tsx',
+              """    const headers: Record<string, string> = {
+              'Content-Type': 'application/json',
+              ...(options.headers as Record<string, string> | undefined)
+            };""",
+              """    const headers: Record<string, string> = {
+              ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+              ...(options.headers as Record<string, string> | undefined)
+            };"""
+          )
+
+          replace_once(
+              'apps/web/src/AffiliateHub.tsx',
+              """      headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+                ...(options.headers ?? {})
+              }""",
+              """      headers: {
+                ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+                Authorization: `Bearer ${token}`,
+                ...(options.headers ?? {})
+              }"""
+          )
+
+          replace_once(
+              'scripts/qa-ui-buttons.mjs',
+              """  const ignoredInventory = /^(?:(?:Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando|Atualizando)\.\.|Ativar|Desativar|IAAutomação|AFCentral de Afiliados)$/i;""",
+              """  const ignoredInventory = /^(?:(?:Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando|Atualizando)\.\.\.|Ativar|Desativar|IAAutomação|AFCentral de Afiliados)$/i;"""
+          )
+          PY
+      - name: Instalar dependências
+        run: npm ci --loglevel=error
+      - name: Validar frontend e QA
+        run: |
+          npm run build -w apps/web
+          node --check scripts/qa-ui-buttons.mjs
+      - name: Commitar correção
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/src/App.tsx apps/web/src/AffiliateHub.tsx scripts/qa-ui-buttons.mjs
+          git commit -m 'Corrige POST sem corpo e desbloqueia OAuth e WhatsApp'
+          git push origin HEAD:qa/full-button-backend-audit
