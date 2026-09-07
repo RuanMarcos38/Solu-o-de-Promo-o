@@ -56,9 +56,12 @@ function enhanceAffiliateHub() {
 
     if (marketplaceName === 'shopee') {
       const portalLink = Array.from(actions.querySelectorAll<HTMLAnchorElement>('a')).find((anchor) => anchor.href.includes('affiliate.shopee.com.br'));
-      if (portalLink) {
+      if (portalLink && portalLink.dataset.enterpriseReady !== 'true') {
+        portalLink.dataset.enterpriseReady = 'true';
         portalLink.href = 'https://affiliate.shopee.com.br/open_api';
-        portalLink.textContent = 'Entrar na Shopee Afiliados';
+        if (portalLink.textContent?.trim() !== 'Entrar na Shopee Afiliados') {
+          portalLink.textContent = 'Entrar na Shopee Afiliados';
+        }
       }
       if (!actions.querySelector('[data-test-connection="shopee"]')) {
         const button = document.createElement('button');
@@ -73,7 +76,10 @@ function enhanceAffiliateHub() {
 
     if (marketplaceName === 'mercado livre') {
       const connectButton = findButtonByText(actions, 'Conectar Mercado Livre');
-      if (connectButton) connectButton.textContent = 'Entrar com Mercado Livre';
+      if (connectButton && connectButton.dataset.enterpriseReady !== 'true') {
+        connectButton.dataset.enterpriseReady = 'true';
+        connectButton.textContent = 'Entrar com Mercado Livre';
+      }
       if (!actions.querySelector('[data-test-connection="mercadolivre"]')) {
         const button = document.createElement('button');
         button.type = 'button';
@@ -92,8 +98,9 @@ function enhanceMarketplaceMenu() {
   if (!menu) return;
 
   const marketplaceButton = findButtonByText(menu, 'Marketplaces') || findButtonByText(menu, 'Afiliados');
-  if (marketplaceButton) {
-    marketplaceButton.textContent = 'Afiliados';
+  if (marketplaceButton && marketplaceButton.dataset.enterpriseReady !== 'true') {
+    marketplaceButton.dataset.enterpriseReady = 'true';
+    if (marketplaceButton.textContent?.trim() !== 'Afiliados') marketplaceButton.textContent = 'Afiliados';
     marketplaceButton.title = 'Conectar contas de afiliado e acompanhar integrações';
   }
 
@@ -133,8 +140,18 @@ function applyEnhancements() {
   enhanceAutomationLauncher();
 }
 
-const observer = new MutationObserver(() => applyEnhancements());
+let scheduled = false;
+function scheduleEnhancements() {
+  if (scheduled) return;
+  scheduled = true;
+  queueMicrotask(() => {
+    scheduled = false;
+    applyEnhancements();
+  });
+}
+
+const observer = new MutationObserver(() => scheduleEnhancements());
 observer.observe(document.documentElement, { childList: true, subtree: true });
 
-window.addEventListener('load', applyEnhancements);
-setTimeout(applyEnhancements, 0);
+window.addEventListener('load', scheduleEnhancements);
+setTimeout(scheduleEnhancements, 0);
