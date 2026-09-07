@@ -66,6 +66,24 @@ function enhanceAutomationLauncher() {
   toggle.title = 'Disparo rápido de ofertas afiliadas para os grupos configurados';
 }
 
+function handleEmptyImmediateSearch(event: Event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest('button');
+  if (!button || button.textContent?.trim() !== 'Buscar agora') return;
+
+  const collector = button.closest('.collector-actions');
+  const keywordInput = collector?.querySelector<HTMLInputElement>('input[placeholder="Buscar produto ou palavra-chave"]');
+  if (keywordInput?.value.trim()) return;
+
+  const filterButton = collector ? findButtonByText(collector, 'Filtrar') : undefined;
+  if (!filterButton) return;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  filterButton.click();
+}
+
 function applyEnhancements() {
   enhanceMarketplaceMenu();
   enhanceAffiliateHub();
@@ -82,6 +100,7 @@ function scheduleEnhancements() {
   });
 }
 
+document.addEventListener('click', handleEmptyImmediateSearch, true);
 const observer = new MutationObserver(() => scheduleEnhancements());
 observer.observe(document.documentElement, { childList: true, subtree: true });
 
