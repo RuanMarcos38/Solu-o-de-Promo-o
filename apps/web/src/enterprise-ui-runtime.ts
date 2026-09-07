@@ -2,7 +2,8 @@ function findButtonByText(root: ParentNode, text: string) {
   return Array.from(root.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.trim() === text);
 }
 
-function openAffiliateHub() {
+function openAffiliateHub(event?: Event) {
+  event?.preventDefault();
   const launcher = document.querySelector<HTMLButtonElement>('.affiliate-hub-launcher');
   launcher?.click();
 }
@@ -51,9 +52,9 @@ function enhanceMarketplaceMenu() {
         <h3>Conecte Mercado Livre e Shopee</h3>
         <p>Use a conta aprovada do programa de afiliados para buscar ofertas e gerar links rastreáveis antes do disparo nos grupos.</p>
       </div>
-      <button type="button" class="primary-action enterprise-open-affiliates">Gerenciar contas afiliadas</button>
+      <a href="#affiliate-hub" class="primary-action enterprise-open-affiliates">Gerenciar contas afiliadas</a>
     `;
-    entry.querySelector<HTMLButtonElement>('.enterprise-open-affiliates')?.addEventListener('click', openAffiliateHub);
+    entry.querySelector<HTMLAnchorElement>('.enterprise-open-affiliates')?.addEventListener('click', openAffiliateHub);
     marketplaceGrid.prepend(entry);
   }
 }
