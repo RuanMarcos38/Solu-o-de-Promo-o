@@ -445,7 +445,7 @@ await step('Salvar conta Shopee', async () => {
     await page.getByRole('button', { name: 'Entrar no painel', exact: true }).waitFor({ state: 'visible', timeout: 8000 });
   });
 
-  const ignoredInventory = /^(?:(?:Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando|Atualizando)\.\.|Ativar|Desativar|IAAutomação|AFCentral de Afiliados)$/i;
+  const ignoredInventory = /^(?:(?:Buscando|Afiliando|Enviando|Aplicando|Salvando|Processando|Executando|Entrando|Atualizando)\.\.\.|Ativar|Desativar|IAAutomação|AFCentral de Afiliados)$/i;
   const inventoryRows = [...buttonInventory.entries()].map(([name, value]) => ({
     name,
     count: value.count,

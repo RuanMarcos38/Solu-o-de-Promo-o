@@ -110,7 +110,7 @@ export function AffiliateHub() {
     const response = await fetch(`${apiUrl}${path}`, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         Authorization: `Bearer ${token}`,
         ...(options.headers ?? {})
       }

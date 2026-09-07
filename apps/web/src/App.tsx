@@ -153,7 +153,7 @@ export function App() {
 
   async function apiFetch(path: string, options: RequestInit = {}) {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers as Record<string, string> | undefined)
     };
     if (token) headers.Authorization = `Bearer ${token}`;
