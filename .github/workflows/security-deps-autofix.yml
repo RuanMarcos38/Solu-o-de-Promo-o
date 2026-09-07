@@ -21,11 +21,11 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --loglevel=error
-      - name: Atualizar Fastify e vulnerabilidades de produção
+      - name: Corrigir vulnerabilidades altas de produção sem breaking changes
         run: |
-          npm install fastify@5.12.3 -w apps/api --save-exact
           npm audit fix --omit=dev --audit-level=high || true
           npm audit --omit=dev --omit=optional --audit-level=high
+          npm ci --loglevel=error
       - name: Validar build
         run: |
           npm run db:generate
@@ -35,9 +35,9 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/api/package.json package-lock.json
+          git add package-lock.json
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m 'Atualiza dependencias vulneraveis de producao'
+          git commit -m 'Corrige vulnerabilidades altas em dependencias de producao'
           git push origin HEAD:qa/full-button-backend-audit
