@@ -33,7 +33,8 @@ export const platformSettingsSchema = z.object({
   }).strict(),
   dispatch: z.object({
     automaticEnabled: z.boolean(),
-    maxOffersPerCycle: z.number().int().min(1).max(500)
+    maxOffersPerCycle: z.number().int().min(1).max(500),
+    minSecondsBetweenMessages: z.number().int().min(0).max(3_600)
   }).strict(),
   publicApi: z.object({
     enabled: z.boolean(),
@@ -78,7 +79,8 @@ export const defaultPlatformSettings: PlatformSettings = normalizePlatformSettin
   },
   dispatch: {
     automaticEnabled: true,
-    maxOffersPerCycle: 100
+    maxOffersPerCycle: 100,
+    minSecondsBetweenMessages: config.dispatchMinSecondsBetweenMessages
   },
   publicApi: {
     enabled: true,
@@ -86,6 +88,22 @@ export const defaultPlatformSettings: PlatformSettings = normalizePlatformSettin
     maxPageSize: 200
   }
 }));
+
+function withCurrentDefaults(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const settings = value as Record<string, unknown>;
+  const dispatch = settings.dispatch && typeof settings.dispatch === 'object' && !Array.isArray(settings.dispatch)
+    ? settings.dispatch as Record<string, unknown>
+    : {};
+
+  return {
+    ...settings,
+    dispatch: {
+      ...dispatch,
+      minSecondsBetweenMessages: dispatch.minSecondsBetweenMessages ?? defaultPlatformSettings.dispatch.minSecondsBetweenMessages
+    }
+  };
+}
 
 export type PlatformSettingsRecord = {
   settings: PlatformSettings;
@@ -116,7 +134,7 @@ export async function getPlatformSettings(): Promise<PlatformSettingsRecord> {
   }
 
   return {
-    settings: normalizePlatformSettings(platformSettingsSchema.parse(record.value)),
+    settings: normalizePlatformSettings(platformSettingsSchema.parse(withCurrentDefaults(record.value))),
     version: record.version,
     updatedBy: record.updatedBy,
     updatedAt: record.updatedAt,

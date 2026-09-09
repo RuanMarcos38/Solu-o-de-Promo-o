@@ -68,6 +68,58 @@
 .automation-panel > p { margin: 11px 0 12px; color: #666660; font-size: 12px; line-height: 1.5; }
 .automation-refresh { width: 100%; min-height: 36px; margin-bottom: 10px; border-radius: 3px; }
 
+.automation-campaign {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 11px;
+  border: 1px solid #e2e5e6;
+  background: #fafbfb;
+}
+
+.automation-campaign-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px;
+  gap: 8px;
+}
+
+.automation-campaign-grid select,
+.automation-campaign-grid input {
+  min-height: 34px;
+  padding: 7px 8px;
+  border-radius: 2px;
+  font-size: 12px;
+}
+
+.automation-check {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #666660;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.automation-check input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.automation-campaign-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.automation-campaign-actions button {
+  min-height: 34px;
+  padding: 0 9px;
+  border-radius: 2px;
+  font-size: 11px;
+}
+
 .automation-list {
   display: grid;
   gap: 0;

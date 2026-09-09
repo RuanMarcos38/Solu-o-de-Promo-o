@@ -13,14 +13,23 @@ export async function ensureDefaultSources() {
   const count = await prisma.marketplaceSource.count();
   if (count > 0) return;
 
-  await prisma.marketplaceSource.create({
-    data: {
-      name: 'Mercado Livre - Padrão',
-      marketplace: Marketplace.MERCADO_LIVRE,
-      isActive: true,
-      keywords: config.defaultKeywords,
-      config: {}
-    }
+  await prisma.marketplaceSource.createMany({
+    data: [
+      {
+        name: 'Mercado Livre - Padrão',
+        marketplace: Marketplace.MERCADO_LIVRE,
+        isActive: true,
+        keywords: config.defaultKeywords,
+        config: {}
+      },
+      {
+        name: 'Shopee - Padrão',
+        marketplace: Marketplace.SHOPEE,
+        isActive: true,
+        keywords: config.defaultKeywords,
+        config: {}
+      }
+    ]
   });
 }
 

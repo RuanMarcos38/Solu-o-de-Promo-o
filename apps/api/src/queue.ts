@@ -207,14 +207,15 @@ export async function configureCollectionSchedule(input: { enabled: boolean; int
 
 export async function enqueueDispatchJob(
   data: DispatchJobData,
-  options: { replayNonce?: string } = {}
+  options: { replayNonce?: string; delayMs?: number } = {}
 ) {
   const suffix = options.replayNonce ? `-retry-${options.replayNonce}` : '';
   const jobId = `dispatch-${data.idempotencyKey}${suffix}`;
   const existing = await dispatchOffersQueue.getJob(jobId);
   if (existing) return { job: existing, created: false };
 
-  const job = await dispatchOffersQueue.add('deliver', data, { jobId });
+  const delay = Math.max(0, Math.floor(options.delayMs ?? 0));
+  const job = await dispatchOffersQueue.add('deliver', data, { jobId, ...(delay > 0 ? { delay } : {}) });
   return { job, created: true };
 }
 

@@ -34,7 +34,7 @@ type PlatformSettings = {
   branding: { platformName: string; timezone: string; locale: 'pt-BR'; currency: 'BRL' };
   collection: { automaticEnabled: boolean; intervalSeconds: number; maxResultsPerSource: number };
   qualification: { minDiscountPercent: number; minOpportunityScore: number; requireVerifiedAffiliateLinks: true };
-  dispatch: { automaticEnabled: boolean; maxOffersPerCycle: number };
+  dispatch: { automaticEnabled: boolean; maxOffersPerCycle: number; minSecondsBetweenMessages: number };
   publicApi: { enabled: boolean; defaultPageSize: number; maxPageSize: number };
 };
 
@@ -387,11 +387,18 @@ export function App() {
     setOfferActionId(`whatsapp-${offer.id}`);
     setStatusMessage('');
     try {
-      const response = await apiFetch(`/dispatch/whatsapp/${offer.id}`, { method: 'POST' });
-      const data = await response.json() as { sent: string[]; failed: Array<{ channel: string; error: string }> };
+      const response = await apiFetch(`/automation/affiliate-whatsapp/${offer.id}`, { method: 'POST' });
+      const data = await response.json() as {
+        offer?: Offer;
+        sent: string[];
+        blocked?: Array<{ channel: string; reason: string }>;
+        failed: Array<{ channel: string; error: string }>;
+      };
+      if (data.offer) mergeOffer(data.offer);
       const sentText = data.sent.length ? `Enviado para ${data.sent.join(', ')}.` : 'Nenhum envio confirmado.';
+      const blockedText = data.blocked?.length ? ` Bloqueios: ${data.blocked.map((item) => `${item.channel}: ${item.reason}`).join('; ')}` : '';
       const failText = data.failed.length ? ` Falhas: ${data.failed.map((item) => `${item.channel}: ${item.error}`).join('; ')}` : '';
-      setStatusMessage(`${sentText}${failText}`);
+      setStatusMessage(`${sentText}${blockedText}${failText}`);
       await loadAdminData().catch(() => undefined);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Não foi possível enviar para WhatsApp.');
@@ -693,7 +700,7 @@ async function toggleChannel(channel: DispatchChannel) {
                 <a href={offer.affiliateUrl ?? offer.productUrl} target="_blank" rel="noreferrer sponsored">{offer.affiliateEligible ? 'Ver oferta afiliada' : 'Ver oferta'}</a>
                 {canEdit ? <button type="button" onClick={() => affiliateOffer(offer)} disabled={offerActionId === `affiliate-${offer.id}`}>{offerActionId === `affiliate-${offer.id}` ? 'Afiliando...' : 'Afiliar produto'}</button> : null}
                 <button type="button" className="ghost-button" onClick={() => copyAffiliateLink(offer)}>Copiar link</button>
-                {canEdit ? <button type="button" className="whatsapp-button" onClick={() => sendOfferToWhatsapp(offer)} disabled={!offer.affiliateEligible || offerActionId === `whatsapp-${offer.id}`}>{offerActionId === `whatsapp-${offer.id}` ? 'Enviando...' : 'Enviar WhatsApp'}</button> : null}
+                {canEdit ? <button type="button" className="whatsapp-button" onClick={() => sendOfferToWhatsapp(offer)} disabled={offerActionId === `whatsapp-${offer.id}`}>{offerActionId === `whatsapp-${offer.id}` ? 'Enviando...' : 'Afiliar + enviar'}</button> : null}
               </div>
             </div>
           </article>
@@ -881,6 +888,10 @@ async function toggleChannel(channel: DispatchChannel) {
               <label>
                 Ofertas por ciclo
                 <input type="number" min="1" max="500" value={platformSettings.settings.dispatch.maxOffersPerCycle} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, dispatch: { ...settings.dispatch, maxOffersPerCycle: Number(event.target.value) } }))} />
+              </label>
+              <label>
+                Intervalo entre mensagens (s)
+                <input type="number" min="0" max="3600" value={platformSettings.settings.dispatch.minSecondsBetweenMessages} onChange={(event) => updatePlatformSettings((settings) => ({ ...settings, dispatch: { ...settings.dispatch, minSecondsBetweenMessages: Number(event.target.value) } }))} />
               </label>
             </fieldset>
 

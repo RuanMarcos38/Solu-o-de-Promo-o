@@ -17,6 +17,26 @@ type AutomationResult = {
   failed: Array<{ channel: string; error: string }>;
 };
 
+type CampaignResult = {
+  dryRun: boolean;
+  marketplaces: string[];
+  limit: number;
+  activeChannels: number;
+  spacingSeconds: number;
+  inspected: number;
+  queued: number;
+  duplicates: number;
+  blocked: number;
+  pendingAffiliate: number;
+  items: Array<{
+    id: string;
+    marketplace: string;
+    title: string;
+    status: string;
+    reason?: string;
+  }>;
+};
+
 type SafeChannel = {
   id: string;
   name: string;
@@ -41,6 +61,9 @@ export function AutomationDock() {
   const [groupNumber, setGroupNumber] = useState('');
   const [groupAudience, setGroupAudience] = useState<'public' | 'private'>('public');
   const [savingGroup, setSavingGroup] = useState(false);
+  const [campaignMarketplace, setCampaignMarketplace] = useState<'all' | 'mercadolivre' | 'shopee'>('all');
+  const [campaignLimit, setCampaignLimit] = useState('50');
+  const [campaignForce, setCampaignForce] = useState(false);
 
   async function authenticatedFetch(path: string, options: RequestInit = {}) {
     const token = sessionStorage.getItem('promo_token');
@@ -131,6 +154,35 @@ export function AutomationDock() {
     }
   }
 
+  async function runCampaign(dryRun: boolean) {
+    setLoading(true);
+    setMessage('');
+    try {
+      const payload = {
+        ...(campaignMarketplace === 'all' ? { marketplaces: ['mercadolivre', 'shopee'] } : { marketplace: campaignMarketplace }),
+        limit: Number(campaignLimit) || 50,
+        dryRun,
+        force: campaignForce,
+        resolveAffiliateLinks: true
+      };
+      const { data } = await authenticatedFetch('/automation/campaign/run', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      const result = data as unknown as CampaignResult;
+      const ready = result.items.filter((item) => ['queued', 'duplicate', 'dry-run'].includes(item.status)).length;
+      const action = dryRun ? 'prévia' : 'campanha enfileirada';
+      setMessage(
+        `${action}: ${ready}/${result.limit} oferta(s), ${result.queued} envio(s) novos, ${result.duplicates} duplicado(s), ${result.pendingAffiliate} pendente(s) de afiliado. Intervalo: ${result.spacingSeconds}s.`
+      );
+      await loadOffers();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Falha ao executar campanha automática.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function runAutomation(offer: Offer) {
     setActionId(offer.id);
     setMessage('');
@@ -200,6 +252,32 @@ export function AutomationDock() {
               <small className="automation-policy-note">Para ofertas do Mercado Livre, somente canais públicos declarados são liberados.</small>
             </section>
           ) : null}
+
+          <section className="automation-campaign" aria-label="Campanha automática">
+            <div className="automation-section-heading">
+              <div>
+                <strong>Campanha automática</strong>
+                <small>Afiliar, filtrar e enfileirar em massa</small>
+              </div>
+            </div>
+            <div className="automation-campaign-grid">
+              <select value={campaignMarketplace} onChange={(event) => setCampaignMarketplace(event.target.value as 'all' | 'mercadolivre' | 'shopee')}>
+                <option value="all">Mercado Livre + Shopee</option>
+                <option value="mercadolivre">Mercado Livre</option>
+                <option value="shopee">Shopee</option>
+              </select>
+              <input type="number" min="1" max="500" value={campaignLimit} onChange={(event) => setCampaignLimit(event.target.value)} aria-label="Máximo de ofertas" />
+              <label className="automation-check">
+                <input type="checkbox" checked={campaignForce} onChange={(event) => setCampaignForce(event.target.checked)} />
+                Reenviar ofertas alteradas
+              </label>
+            </div>
+            <div className="automation-campaign-actions">
+              <button className="ghost-button" type="button" onClick={() => void runCampaign(true)} disabled={loading}>Pré-visualizar</button>
+              <button type="button" onClick={() => void runCampaign(false)} disabled={loading}>{loading ? 'Processando...' : 'Enviar máximo permitido'}</button>
+            </div>
+            <small className="automation-policy-note">A campanha usa somente links afiliados verificados e respeita a cadência configurada no SaaS.</small>
+          </section>
 
           <button className="ghost-button automation-refresh" type="button" onClick={() => void loadOffers()} disabled={loading}>
             {loading ? 'Atualizando...' : 'Atualizar ofertas'}

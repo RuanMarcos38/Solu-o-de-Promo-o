@@ -36,9 +36,36 @@ Configurações:
 DISPATCH_ATTEMPTS=5
 DISPATCH_BACKOFF_MS=10000
 DISPATCH_CONCURRENCY=8
+DISPATCH_MIN_SECONDS_BETWEEN_MESSAGES=12
 ```
 
 O backoff é exponencial. Com base de 10 segundos, as tentativas aguardam intervalos progressivamente maiores, reduzindo pressão sobre provedores instáveis.
+
+`DISPATCH_MIN_SECONDS_BETWEEN_MESSAGES` define a cadência mínima entre ofertas enfileiradas pela automação recorrente e pela rota de campanha. Use `0` apenas em provedores que documentem suporte explícito a alto volume.
+
+## Campanha automática
+
+O endpoint `POST /automation/campaign/run` permite pré-visualizar ou enfileirar o máximo de ofertas permitido pela configuração `dispatch.maxOffersPerCycle`.
+
+Payload típico:
+
+```json
+{
+  "marketplaces": ["mercadolivre", "shopee"],
+  "limit": 50,
+  "dryRun": false,
+  "resolveAffiliateLinks": true
+}
+```
+
+Regras aplicadas:
+
+- somente Mercado Livre e Shopee entram nesse disparo em massa;
+- a seleção respeita desconto mínimo, score mínimo e limite por ciclo;
+- ofertas sem link afiliado verificado são tentadas via integração oficial/resolvedor autorizado;
+- links ainda pendentes ficam fora do envio;
+- cada oferta enviada é espaçada pela cadência configurada;
+- a idempotência impede reenviar a mesma oferta inalterada para o mesmo canal.
 
 Cada tentativa atualiza o `DispatchLog` com:
 

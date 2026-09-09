@@ -223,6 +223,21 @@ export function AffiliateHub() {
     }
   }
 
+  async function testConnection(marketplace: Extract<MarketplaceKey, 'mercadolivre' | 'shopee'>) {
+    setLoading(true);
+    setMessage('');
+    setError('');
+    try {
+      const data = await request(`/affiliate/connections/${marketplace}/test`, { method: 'POST' });
+      setMessage(data?.message || `${marketplace === 'mercadolivre' ? 'Mercado Livre' : 'Shopee'} validado com sucesso.`);
+      await loadConnections();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao testar conexão.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function affiliateBatch() {
     setLoading(true);
     setMessage('');
@@ -326,6 +341,7 @@ export function AffiliateHub() {
                 </details>
                 <div className="affiliate-hub-actions">
                   <button type="button" onClick={connectMercadoLivre} disabled={loading}>Conectar Mercado Livre</button>
+                  <button className="secondary" type="button" onClick={() => void testConnection('mercadolivre')} disabled={loading}>Testar conexão</button>
                   <button className="secondary" type="button" onClick={() => saveConnection('mercadolivre', mercadoLivre, 'Configuração do Mercado Livre salva com segurança.')} disabled={loading}>Salvar</button>
                   <a href={byMarketplace.mercadolivre?.portalUrl || 'https://www.mercadolivre.com.br/l/visite-o-portal-de-afiliados'} target="_blank" rel="noreferrer">Abrir Central de Afiliados</a>
                 </div>
@@ -351,6 +367,7 @@ export function AffiliateHub() {
                 </div>
                 <div className="affiliate-hub-actions">
                   <button type="button" onClick={() => saveConnection('shopee', shopee, 'Shopee conectada. As novas afiliações usarão a Affiliate Open API.')} disabled={loading}>Salvar e ativar</button>
+                  <button className="secondary" type="button" onClick={() => void testConnection('shopee')} disabled={loading}>Testar conexão</button>
                   <a href={byMarketplace.shopee?.portalUrl || 'https://affiliate.shopee.com.br/'} target="_blank" rel="noreferrer">Abrir portal Shopee</a>
                 </div>
               </article>

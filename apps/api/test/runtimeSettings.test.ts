@@ -13,6 +13,7 @@ describe('configurações parametrizadas', () => {
     settings.collection.intervalSeconds = 300;
     settings.qualification.minDiscountPercent = minimumVisibleDiscountPercent;
     settings.dispatch.maxOffersPerCycle = 75;
+    settings.dispatch.minSecondsBetweenMessages = 10;
 
     assert.deepEqual(platformSettingsSchema.parse(settings), settings);
   });
@@ -34,6 +35,19 @@ describe('configurações parametrizadas', () => {
     assert.throws(() => platformSettingsSchema.parse(settings));
   });
 
+  test('aceita upgrade em memória para registros salvos antes da cadência de disparo', () => {
+    const settings: any = settingsCopy();
+    delete settings.dispatch.minSecondsBetweenMessages;
+    const upgraded = {
+      ...settings,
+      dispatch: {
+        ...settings.dispatch,
+        minSecondsBetweenMessages: defaultPlatformSettings.dispatch.minSecondsBetweenMessages
+      }
+    };
+    assert.deepEqual(platformSettingsSchema.parse(upgraded), upgraded);
+  });
+
   test('valida limites, paginação e fuso horário', () => {
     const invalidInterval = settingsCopy();
     invalidInterval.collection.intervalSeconds = 30;
@@ -47,5 +61,9 @@ describe('configurações parametrizadas', () => {
     const invalidTimezone = settingsCopy();
     invalidTimezone.branding.timezone = 'Brasil/Sao_Paulo/Invalido';
     assert.throws(() => platformSettingsSchema.parse(invalidTimezone), /Fuso horário/i);
+
+    const invalidDispatchCadence = settingsCopy();
+    invalidDispatchCadence.dispatch.minSecondsBetweenMessages = -1;
+    assert.throws(() => platformSettingsSchema.parse(invalidDispatchCadence));
   });
 });

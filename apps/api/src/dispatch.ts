@@ -227,7 +227,7 @@ async function createSkippedLog(
 
 export async function dispatchOffer(
   offer: OfferForDispatch,
-  options: { force?: boolean } = {}
+  options: { force?: boolean; delayMs?: number } = {}
 ): Promise<DispatchEnqueueResult> {
   const forceScope = options.force ? `manual-${Date.now()}-${Math.random().toString(36).slice(2)}` : 'production';
   if (!offer.affiliateEligible || !offer.affiliateUrl) {
@@ -263,6 +263,8 @@ export async function dispatchOffer(
       idempotencyKey,
       matchedAlertNames,
       enqueuedAt: new Date().toISOString()
+    }, {
+      delayMs: options.delayMs
     });
 
     if (queued.created) result.queued += 1;
@@ -415,5 +417,20 @@ export async function moveDispatchJobToDeadLetter(
 export async function dispatchOffers(offers: OfferForDispatch[]) {
   const results: DispatchEnqueueResult[] = [];
   for (const offer of offers) results.push(await dispatchOffer(offer));
+  return results;
+}
+
+export async function dispatchOffersWithSpacing(
+  offers: OfferForDispatch[],
+  options: { spacingSeconds?: number; force?: boolean } = {}
+) {
+  const results: DispatchEnqueueResult[] = [];
+  const spacingMs = Math.max(0, Math.floor(options.spacingSeconds ?? 0)) * 1000;
+  for (const [index, offer] of offers.entries()) {
+    results.push(await dispatchOffer(offer, {
+      force: options.force,
+      delayMs: index * spacingMs
+    }));
+  }
   return results;
 }

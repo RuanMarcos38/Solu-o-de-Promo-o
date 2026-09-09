@@ -10,7 +10,7 @@ Administradores podem alterar sem editar código ou reiniciar a API:
 - ativação e intervalo do robô de varredura;
 - quantidade máxima de resultados por fonte;
 - desconto e score mínimos para aprovação;
-- ativação e volume máximo de distribuição automática;
+- ativação, volume máximo e intervalo entre mensagens da distribuição automática;
 - ativação e limites de paginação da API pública.
 
 As configurações são validadas, versionadas com controle de concorrência e registradas em auditoria. A exigência de link afiliado verificado é permanente e não pode ser desativada. Tokens, senhas e chaves de marketplaces não são aceitos nessa configuração: continuam somente nas variáveis seguras do backend ou nos canais criptografados.
@@ -30,7 +30,7 @@ A solução foi pensada para operar como um “radar de promoções”:
 7. Enfileira coletas recorrentes com Redis + BullMQ.
 8. Permite criar alertas por categoria, palavra-chave, desconto mínimo e preço máximo.
 9. Permite administrar fontes, alertas, usuários e canais pelo painel.
-10. Distribui ofertas automaticamente para Telegram, WhatsApp genérico, Evolution API ou Webhook.
+10. Distribui ofertas automaticamente para Telegram, WhatsApp genérico, Evolution API ou Webhook com limite por ciclo, espaçamento e idempotência.
 11. Exibe status operacional de banco, Redis, fila, jobs, fontes, alertas, canais e logs.
 
 ## Stack Técnica
@@ -177,6 +177,8 @@ GET /api/v1/marketplaces
 GET /openapi.json
 POST /collect/run
 POST /collect/enqueue
+POST /automation/campaign/run
+POST /automation/affiliate-whatsapp/:offerId
 GET /admin/system
 GET /admin/users
 POST /admin/users

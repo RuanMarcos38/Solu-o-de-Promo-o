@@ -1,5 +1,5 @@
 import { getAdapter } from './adapters/index.js';
-import { dispatchOffers } from './dispatch.js';
+import { dispatchOffersWithSpacing } from './dispatch.js';
 import { upsertOffers } from './offerStore.js';
 import { getPlatformSettings } from './runtimeSettings.js';
 import { isApprovedOffer } from './scoring.js';
@@ -42,7 +42,9 @@ export async function runCollection(options?: { keyword?: string; marketplace?: 
   }
 
   if (settings.dispatch.automaticEnabled) {
-    await dispatchOffers(approved.slice(0, settings.dispatch.maxOffersPerCycle) as any);
+    await dispatchOffersWithSpacing(approved.slice(0, settings.dispatch.maxOffersPerCycle) as any, {
+      spacingSeconds: settings.dispatch.minSecondsBetweenMessages
+    });
   }
 
   return {

@@ -4,12 +4,24 @@ import { z } from 'zod';
 import { requireEditor } from './auth.js';
 import { resolveAffiliateLink } from './affiliate.js';
 import { prisma } from './db.js';
+import { dispatchOffer } from './dispatch.js';
 import { checkMarketplaceChannelPolicy, formatOfferMessage, type OfferForDispatch } from './dispatchRules.js';
 import { fetchExternal } from './http.js';
 import { toMarketplaceEnum, toMarketplaceName } from './marketplace.js';
+import { getPlatformSettings } from './runtimeSettings.js';
 import { decryptChannelConfig } from './secrets.js';
 
 const paramsSchema = z.object({ offerId: z.string().trim().min(1).max(140) });
+const campaignSchema = z.object({
+  marketplaces: z.array(z.enum(['mercadolivre', 'shopee'])).min(1).max(2).optional(),
+  marketplace: z.enum(['mercadolivre', 'shopee']).optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  minDiscountPercent: z.coerce.number().min(50).max(100).optional(),
+  minScore: z.coerce.number().int().min(0).max(100).optional(),
+  dryRun: z.boolean().optional().default(false),
+  force: z.boolean().optional().default(false),
+  resolveAffiliateLinks: z.boolean().optional().default(true)
+}).strict();
 
 type ChannelConfig = Record<string, unknown>;
 
@@ -17,6 +29,20 @@ type AiCopyResult = {
   message: string;
   aiUsed: boolean;
   fallbackReason?: string;
+};
+
+type CampaignItem = {
+  id: string;
+  marketplace: string;
+  title: string;
+  currentPrice: number;
+  discountPercent?: number;
+  score: number;
+  affiliateEligible: boolean;
+  affiliateUrl?: string;
+  status: 'ready' | 'queued' | 'duplicate' | 'blocked' | 'pending-affiliate' | 'dry-run';
+  reason?: string;
+  jobIds?: string[];
 };
 
 function marketplaceName(value: Offer['marketplace']) {
@@ -51,6 +77,25 @@ function toDispatchOffer(offer: Offer): OfferForDispatch {
     affiliateEligible: offer.affiliateEligible,
     marketplace: marketplaceName(offer.marketplace),
     score: offer.score
+  };
+}
+
+function toCampaignItem(
+  offer: Offer,
+  status: CampaignItem['status'],
+  extra: Pick<CampaignItem, 'reason' | 'jobIds'> = {}
+): CampaignItem {
+  return {
+    id: offer.id,
+    marketplace: marketplaceName(offer.marketplace),
+    title: offer.title,
+    currentPrice: Number(offer.currentPrice),
+    discountPercent: offer.discountPercent === null ? undefined : Number(offer.discountPercent),
+    score: offer.score,
+    affiliateEligible: offer.affiliateEligible,
+    affiliateUrl: offer.affiliateUrl ?? undefined,
+    status,
+    ...extra
   };
 }
 
@@ -180,7 +225,172 @@ async function writeLog(input: {
   });
 }
 
+async function ensureCampaignAffiliateLink(offer: Offer) {
+  if (offer.affiliateEligible && offer.affiliateUrl) return offer;
+
+  const resolved = await resolveAffiliateLink({
+    marketplace: marketplaceName(offer.marketplace),
+    externalId: offer.externalId,
+    productUrl: offer.productUrl
+  });
+
+  if (!resolved.affiliateEligible || !resolved.affiliateUrl) return offer;
+
+  return prisma.offer.update({
+    where: { id: offer.id },
+    data: {
+      affiliateEligible: true,
+      affiliateUrl: resolved.affiliateUrl,
+      affiliateProvider: resolved.affiliateProvider,
+      affiliateVerifiedAt: resolved.affiliateVerifiedAt ?? new Date()
+    }
+  });
+}
+
+async function campaignChannelSummary(offer: Offer) {
+  const channels = await prisma.dispatchChannel.findMany({ where: { isActive: true } });
+  const dispatchOfferPayload = toDispatchOffer(offer);
+  const allowed = [];
+  const blocked = [];
+
+  for (const channel of channels) {
+    const channelConfig = decryptChannelConfig(channel.config);
+    const policy = checkMarketplaceChannelPolicy(dispatchOfferPayload, channel.type, channelConfig);
+    if (policy.allowed) allowed.push({ id: channel.id, name: channel.name, type: channel.type });
+    else blocked.push({ id: channel.id, name: channel.name, type: channel.type, reason: policy.reason });
+  }
+
+  return { total: channels.length, allowed, blocked };
+}
+
+async function selectCampaignOffers(input: z.infer<typeof campaignSchema>) {
+  const { settings } = await getPlatformSettings();
+  const selectedMarketplaces = input.marketplaces
+    ?? (input.marketplace ? [input.marketplace] : ['mercadolivre', 'shopee'] as const);
+  const marketplaceEnums = selectedMarketplaces
+    .map((item) => toMarketplaceEnum(item))
+    .filter(Boolean) as Array<Offer['marketplace']>;
+  const limit = Math.min(input.limit ?? settings.dispatch.maxOffersPerCycle, settings.dispatch.maxOffersPerCycle);
+  const minDiscountPercent = input.minDiscountPercent ?? settings.qualification.minDiscountPercent;
+  const minScore = input.minScore ?? settings.qualification.minOpportunityScore;
+
+  const candidates = await prisma.offer.findMany({
+    where: {
+      isActive: true,
+      marketplace: { in: marketplaceEnums },
+      discountPercent: { gte: minDiscountPercent },
+      score: { gte: minScore }
+    },
+    orderBy: [{ score: 'desc' }, { discountPercent: 'desc' }, { lastSeenAt: 'desc' }],
+    take: Math.min(1_000, Math.max(limit * 4, limit))
+  });
+
+  return {
+    settings,
+    limit,
+    minDiscountPercent,
+    minScore,
+    selectedMarketplaces,
+    candidates
+  };
+}
+
 export async function registerPromotionAutomationRoutes(app: FastifyInstance) {
+  app.post('/automation/campaign/run', async (request) => {
+    const currentUser = await requireEditor(request);
+    const body = campaignSchema.parse(request.body ?? {});
+    const selected = await selectCampaignOffers(body);
+    const activeChannels = await prisma.dispatchChannel.count({ where: { isActive: true } });
+
+    if (!body.dryRun && activeChannels === 0) {
+      throw Object.assign(new Error('Nenhum canal ativo configurado para receber ofertas.'), { statusCode: 409 });
+    }
+
+    const items: CampaignItem[] = [];
+    let queued = 0;
+    let duplicates = 0;
+    let blocked = 0;
+    let pendingAffiliate = 0;
+    let inspected = 0;
+    const spacingMs = selected.settings.dispatch.minSecondsBetweenMessages * 1000;
+
+    for (const candidate of selected.candidates) {
+      if (items.filter((item) => ['queued', 'duplicate', 'dry-run'].includes(item.status)).length >= selected.limit) break;
+      inspected += 1;
+
+      let offer = candidate;
+      if ((!offer.affiliateEligible || !offer.affiliateUrl) && body.resolveAffiliateLinks) {
+        try {
+          offer = await ensureCampaignAffiliateLink(offer);
+        } catch (error) {
+          pendingAffiliate += 1;
+          items.push(toCampaignItem(offer, 'pending-affiliate', {
+            reason: error instanceof Error ? error.message : 'Falha ao gerar link de afiliado'
+          }));
+          continue;
+        }
+      }
+
+      if (!offer.affiliateEligible || !offer.affiliateUrl) {
+        pendingAffiliate += 1;
+        items.push(toCampaignItem(offer, 'pending-affiliate', {
+          reason: marketplaceName(offer.marketplace) === 'mercadolivre'
+            ? 'Cole um link da Central de Afiliados ou configure um resolvedor autorizado.'
+            : 'Configure a API oficial de afiliados para gerar link rastreável.'
+        }));
+        continue;
+      }
+
+      if (body.dryRun) {
+        const channels = await campaignChannelSummary(offer);
+        items.push(toCampaignItem(offer, channels.allowed.length > 0 ? 'dry-run' : 'blocked', {
+          reason: channels.allowed.length > 0
+            ? `${channels.allowed.length} canal(is) apto(s); ${channels.blocked.length} bloqueado(s) por política.`
+            : 'Nenhum canal ativo apto para esta oferta.',
+          jobIds: channels.allowed.map((channel) => channel.id)
+        }));
+        continue;
+      }
+
+      const dispatchResult = await dispatchOffer(toDispatchOffer(offer), {
+        force: body.force,
+        delayMs: items.filter((item) => ['queued', 'duplicate'].includes(item.status)).length * spacingMs
+      });
+      queued += dispatchResult.queued;
+      duplicates += dispatchResult.duplicates;
+      blocked += dispatchResult.blocked;
+      items.push(toCampaignItem(
+        offer,
+        dispatchResult.queued > 0 ? 'queued' : dispatchResult.duplicates > 0 ? 'duplicate' : 'blocked',
+        {
+          reason: dispatchResult.skipped
+            ? 'Oferta filtrada por regra de alerta ou política.'
+            : dispatchResult.blocked > 0
+              ? `${dispatchResult.blocked} canal(is) bloqueado(s) por política.`
+              : undefined,
+          jobIds: dispatchResult.jobIds
+        }
+      ));
+    }
+
+    return {
+      requestedBy: currentUser.id,
+      dryRun: body.dryRun,
+      marketplaces: selected.selectedMarketplaces,
+      limit: selected.limit,
+      minDiscountPercent: selected.minDiscountPercent,
+      minScore: selected.minScore,
+      activeChannels,
+      spacingSeconds: selected.settings.dispatch.minSecondsBetweenMessages,
+      inspected,
+      queued,
+      duplicates,
+      blocked,
+      pendingAffiliate,
+      items
+    };
+  });
+
   app.post('/automation/affiliate-whatsapp/:offerId', async (request) => {
     const currentUser = await requireEditor(request);
     const { offerId } = paramsSchema.parse(request.params);

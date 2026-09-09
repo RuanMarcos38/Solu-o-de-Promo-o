@@ -72,6 +72,19 @@ A Central de Afiliados possui a ação **Afiliar ofertas**.
 
 Ela seleciona as ofertas pendentes de maior score e tenta gerar links oficiais/rastreáveis para até 50 produtos por execução. Produtos que não puderem receber link de comissão permanecem pendentes e não entram automaticamente no disparo.
 
+## Campanha automática
+
+O painel **Automação** possui uma campanha para Mercado Livre + Shopee. Ela permite:
+
+- escolher Shopee, Mercado Livre ou ambos;
+- definir o máximo de ofertas da execução;
+- pré-visualizar sem enviar;
+- tentar gerar links afiliados oficiais antes do disparo;
+- enfileirar somente ofertas com link verificado;
+- respeitar o intervalo entre mensagens configurado em **Configurações > Distribuição**.
+
+O backend expõe essa rotina em `POST /automation/campaign/run`. O limite real é sempre o menor valor entre o payload da campanha e `dispatch.maxOffersPerCycle`, para evitar envios acima do teto operacional definido pelo administrador.
+
 ## WhatsApp
 
 O fluxo existente de WhatsApp/Evolution continua preservado. A automação só deve disparar ofertas quando `affiliateEligible=true` e houver `affiliateUrl`.
