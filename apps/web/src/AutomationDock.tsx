@@ -19,12 +19,15 @@ type AutomationResult = {
 
 type CampaignResult = {
   dryRun: boolean;
+  deliveryMode?: 'queue' | 'direct';
   marketplaces: string[];
   limit: number;
   activeChannels: number;
   spacingSeconds: number;
   inspected: number;
   queued: number;
+  sent?: number;
+  failed?: number;
   duplicates: number;
   blocked: number;
   pendingAffiliate: number;
@@ -162,6 +165,7 @@ export function AutomationDock() {
         ...(campaignMarketplace === 'all' ? { marketplaces: ['mercadolivre', 'shopee'] } : { marketplace: campaignMarketplace }),
         limit: Number(campaignLimit) || 50,
         dryRun,
+        deliveryMode: dryRun ? 'queue' : 'direct',
         force: campaignForce,
         resolveAffiliateLinks: true
       };
@@ -170,10 +174,10 @@ export function AutomationDock() {
         body: JSON.stringify(payload)
       });
       const result = data as unknown as CampaignResult;
-      const ready = result.items.filter((item) => ['queued', 'duplicate', 'dry-run'].includes(item.status)).length;
-      const action = dryRun ? 'prévia' : 'campanha enfileirada';
+      const ready = result.items.filter((item) => ['queued', 'duplicate', 'dry-run', 'sent'].includes(item.status)).length;
+      const action = dryRun ? 'prévia' : result.deliveryMode === 'direct' ? 'campanha enviada' : 'campanha enfileirada';
       setMessage(
-        `${action}: ${ready}/${result.limit} oferta(s), ${result.queued} envio(s) novos, ${result.duplicates} duplicado(s), ${result.pendingAffiliate} pendente(s) de afiliado. Intervalo: ${result.spacingSeconds}s.`
+        `${action}: ${ready}/${result.limit} oferta(s), ${result.sent ?? 0} envio(s) confirmado(s), ${result.queued} enfileirado(s), ${result.duplicates} duplicado(s), ${result.failed ?? 0} falha(s), ${result.pendingAffiliate} pendente(s) de afiliado. Intervalo: ${result.spacingSeconds}s.`
       );
       await loadOffers();
     } catch (error) {

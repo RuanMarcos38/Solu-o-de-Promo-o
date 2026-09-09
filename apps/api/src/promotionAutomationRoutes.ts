@@ -20,7 +20,8 @@ const campaignSchema = z.object({
   minScore: z.coerce.number().int().min(0).max(100).optional(),
   dryRun: z.boolean().optional().default(false),
   force: z.boolean().optional().default(false),
-  resolveAffiliateLinks: z.boolean().optional().default(true)
+  resolveAffiliateLinks: z.boolean().optional().default(true),
+  deliveryMode: z.enum(['queue', 'direct']).optional().default('queue')
 }).strict();
 
 type ChannelConfig = Record<string, unknown>;
@@ -40,7 +41,7 @@ type CampaignItem = {
   score: number;
   affiliateEligible: boolean;
   affiliateUrl?: string;
-  status: 'ready' | 'queued' | 'duplicate' | 'blocked' | 'pending-affiliate' | 'dry-run';
+  status: 'ready' | 'queued' | 'duplicate' | 'blocked' | 'pending-affiliate' | 'dry-run' | 'sent' | 'failed';
   reason?: string;
   jobIds?: string[];
 };
@@ -263,6 +264,86 @@ async function campaignChannelSummary(offer: Offer) {
   return { total: channels.length, allowed, blocked };
 }
 
+async function sendAffiliateOfferToWhatsappChannels(offer: Offer, requestedBy: string, source: string) {
+  const dispatchOffer = toDispatchOffer(offer);
+  const copy = await createPromotionCopy(dispatchOffer);
+  const channels = await prisma.dispatchChannel.findMany({
+    where: { isActive: true, type: { in: ['whatsapp', 'evolution'] } },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  if (channels.length === 0) {
+    throw Object.assign(new Error('Nenhum grupo/canal WhatsApp ou Evolution ativo configurado'), { statusCode: 409 });
+  }
+
+  const sent: string[] = [];
+  const blocked: Array<{ channel: string; reason: string }> = [];
+  const failed: Array<{ channel: string; error: string }> = [];
+
+  for (const channel of channels) {
+    const channelConfig = decryptChannelConfig(channel.config);
+    const policy = checkMarketplaceChannelPolicy(dispatchOffer, channel.type, channelConfig);
+    if (!policy.allowed) {
+      blocked.push({ channel: channel.name, reason: policy.reason });
+      await writeLog({
+        offerId: offer.id,
+        channel: channel.name,
+        status: DispatchStatus.SKIPPED,
+        payload: {
+          source,
+          reason: policy.reason,
+          channelId: channel.id,
+          marketplace: dispatchOffer.marketplace,
+          requestedBy,
+          aiUsed: copy.aiUsed
+        }
+      });
+      continue;
+    }
+
+    try {
+      if (channel.type === 'evolution' || channelConfig.provider === 'evolution' || channelConfig.baseUrl || channelConfig.instanceName) {
+        await sendEvolution(channelConfig, copy.message);
+      } else {
+        await sendGenericWhatsapp(channelConfig, copy.message, dispatchOffer);
+      }
+      sent.push(channel.name);
+      await writeLog({
+        offerId: offer.id,
+        channel: channel.name,
+        status: DispatchStatus.SENT,
+        payload: {
+          source,
+          channelId: channel.id,
+          marketplace: dispatchOffer.marketplace,
+          requestedBy,
+          aiUsed: copy.aiUsed,
+          sentAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      failed.push({ channel: channel.name, error: message });
+      await writeLog({
+        offerId: offer.id,
+        channel: channel.name,
+        status: DispatchStatus.FAILED,
+        error: message,
+        payload: {
+          source,
+          channelId: channel.id,
+          marketplace: dispatchOffer.marketplace,
+          requestedBy,
+          aiUsed: copy.aiUsed,
+          failedAt: new Date().toISOString()
+        }
+      });
+    }
+  }
+
+  return { dispatchOffer, copy, message: copy.message, sent, blocked, failed };
+}
+
 async function selectCampaignOffers(input: z.infer<typeof campaignSchema>) {
   const { settings } = await getPlatformSettings();
   const selectedMarketplaces = input.marketplaces
@@ -301,21 +382,28 @@ export async function registerPromotionAutomationRoutes(app: FastifyInstance) {
     const body = campaignSchema.parse(request.body ?? {});
     const selected = await selectCampaignOffers(body);
     const activeChannels = await prisma.dispatchChannel.count({ where: { isActive: true } });
+    const directDelivery = body.deliveryMode === 'direct' && !body.dryRun;
+    const activeDeliveryChannels = directDelivery
+      ? await prisma.dispatchChannel.count({ where: { isActive: true, type: { in: ['whatsapp', 'evolution'] } } })
+      : activeChannels;
 
-    if (!body.dryRun && activeChannels === 0) {
+    if (!body.dryRun && activeDeliveryChannels === 0) {
       throw Object.assign(new Error('Nenhum canal ativo configurado para receber ofertas.'), { statusCode: 409 });
     }
 
     const items: CampaignItem[] = [];
     let queued = 0;
+    let sent = 0;
+    let failed = 0;
     let duplicates = 0;
     let blocked = 0;
     let pendingAffiliate = 0;
     let inspected = 0;
     const spacingMs = selected.settings.dispatch.minSecondsBetweenMessages * 1000;
+    const countedStatuses: CampaignItem['status'][] = ['queued', 'duplicate', 'dry-run', 'sent', 'failed'];
 
     for (const candidate of selected.candidates) {
-      if (items.filter((item) => ['queued', 'duplicate', 'dry-run'].includes(item.status)).length >= selected.limit) break;
+      if (items.filter((item) => countedStatuses.includes(item.status)).length >= selected.limit) break;
       inspected += 1;
 
       let offer = candidate;
@@ -352,6 +440,38 @@ export async function registerPromotionAutomationRoutes(app: FastifyInstance) {
         continue;
       }
 
+      if (directDelivery) {
+        const sentOrFailedCount = items.filter((item) => ['sent', 'failed'].includes(item.status)).length;
+        if (sentOrFailedCount > 0 && spacingMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, spacingMs));
+        }
+
+        try {
+          const delivery = await sendAffiliateOfferToWhatsappChannels(offer, currentUser.id, 'campaign-direct-delivery');
+          sent += delivery.sent.length;
+          failed += delivery.failed.length;
+          blocked += delivery.blocked.length;
+          items.push(toCampaignItem(
+            offer,
+            delivery.sent.length > 0 ? 'sent' : delivery.failed.length > 0 ? 'failed' : 'blocked',
+            {
+              reason: delivery.sent.length > 0
+                ? `${delivery.sent.length} canal(is) confirmado(s); ${delivery.failed.length} falha(s); ${delivery.blocked.length} bloqueado(s).`
+                : delivery.failed.length > 0
+                  ? `${delivery.failed.length} falha(s) de envio.`
+                  : `${delivery.blocked.length} canal(is) bloqueado(s) por política.`,
+              jobIds: delivery.sent
+            }
+          ));
+        } catch (error) {
+          failed += 1;
+          items.push(toCampaignItem(offer, 'failed', {
+            reason: error instanceof Error ? error.message : 'Falha ao enviar campanha diretamente'
+          }));
+        }
+        continue;
+      }
+
       const dispatchResult = await dispatchOffer(toDispatchOffer(offer), {
         force: body.force,
         delayMs: items.filter((item) => ['queued', 'duplicate'].includes(item.status)).length * spacingMs
@@ -376,6 +496,7 @@ export async function registerPromotionAutomationRoutes(app: FastifyInstance) {
     return {
       requestedBy: currentUser.id,
       dryRun: body.dryRun,
+      deliveryMode: body.deliveryMode,
       marketplaces: selected.selectedMarketplaces,
       limit: selected.limit,
       minDiscountPercent: selected.minDiscountPercent,
@@ -384,6 +505,8 @@ export async function registerPromotionAutomationRoutes(app: FastifyInstance) {
       spacingSeconds: selected.settings.dispatch.minSecondsBetweenMessages,
       inspected,
       queued,
+      sent,
+      failed,
       duplicates,
       blocked,
       pendingAffiliate,
@@ -419,96 +542,22 @@ export async function registerPromotionAutomationRoutes(app: FastifyInstance) {
       });
     }
 
-    const dispatchOffer = toDispatchOffer(offer);
-    const copy = await createPromotionCopy(dispatchOffer);
-    const channels = await prisma.dispatchChannel.findMany({
-      where: { isActive: true, type: { in: ['whatsapp', 'evolution'] } },
-      orderBy: { createdAt: 'asc' }
-    });
-
-    if (channels.length === 0) {
-      throw Object.assign(new Error('Nenhum grupo/canal WhatsApp ou Evolution ativo configurado'), { statusCode: 409 });
-    }
-
-    const sent: string[] = [];
-    const blocked: Array<{ channel: string; reason: string }> = [];
-    const failed: Array<{ channel: string; error: string }> = [];
-
-    for (const channel of channels) {
-      const channelConfig = decryptChannelConfig(channel.config);
-      const policy = checkMarketplaceChannelPolicy(dispatchOffer, channel.type, channelConfig);
-      if (!policy.allowed) {
-        blocked.push({ channel: channel.name, reason: policy.reason });
-        await writeLog({
-          offerId: offer.id,
-          channel: channel.name,
-          status: DispatchStatus.SKIPPED,
-          payload: {
-            source: 'affiliate-whatsapp-automation',
-            reason: policy.reason,
-            channelId: channel.id,
-            marketplace: dispatchOffer.marketplace,
-            requestedBy: currentUser.id,
-            aiUsed: copy.aiUsed
-          }
-        });
-        continue;
-      }
-
-      try {
-        if (channel.type === 'evolution' || channelConfig.provider === 'evolution' || channelConfig.baseUrl || channelConfig.instanceName) {
-          await sendEvolution(channelConfig, copy.message);
-        } else {
-          await sendGenericWhatsapp(channelConfig, copy.message, dispatchOffer);
-        }
-        sent.push(channel.name);
-        await writeLog({
-          offerId: offer.id,
-          channel: channel.name,
-          status: DispatchStatus.SENT,
-          payload: {
-            source: 'affiliate-whatsapp-automation',
-            channelId: channel.id,
-            marketplace: dispatchOffer.marketplace,
-            requestedBy: currentUser.id,
-            aiUsed: copy.aiUsed,
-            sentAt: new Date().toISOString()
-          }
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Erro desconhecido';
-        failed.push({ channel: channel.name, error: message });
-        await writeLog({
-          offerId: offer.id,
-          channel: channel.name,
-          status: DispatchStatus.FAILED,
-          error: message,
-          payload: {
-            source: 'affiliate-whatsapp-automation',
-            channelId: channel.id,
-            marketplace: dispatchOffer.marketplace,
-            requestedBy: currentUser.id,
-            aiUsed: copy.aiUsed,
-            failedAt: new Date().toISOString()
-          }
-        });
-      }
-    }
+    const delivery = await sendAffiliateOfferToWhatsappChannels(offer, currentUser.id, 'affiliate-whatsapp-automation');
 
     return {
       offer: {
         id: offer.id,
-        marketplace: dispatchOffer.marketplace,
+        marketplace: delivery.dispatchOffer.marketplace,
         title: offer.title,
         affiliateEligible: offer.affiliateEligible,
         affiliateUrl: offer.affiliateUrl,
         affiliateProvider: offer.affiliateProvider
       },
-      ai: { used: copy.aiUsed, fallbackReason: copy.fallbackReason },
-      message: copy.message,
-      sent,
-      blocked,
-      failed
+      ai: { used: delivery.copy.aiUsed, fallbackReason: delivery.copy.fallbackReason },
+      message: delivery.message,
+      sent: delivery.sent,
+      blocked: delivery.blocked,
+      failed: delivery.failed
     };
   });
 }
