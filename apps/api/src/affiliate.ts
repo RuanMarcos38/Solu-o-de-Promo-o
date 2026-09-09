@@ -26,7 +26,7 @@ type ShopeeShortLinkResponse = {
 };
 
 const marketplaceHosts: Record<MarketplaceName, string[]> = {
-  mercadolivre: ['mercadolivre.com.br', 'mercadolivre.com', 'mercado.li'],
+  mercadolivre: ['mercadolivre.com.br', 'mercadolivre.com', 'mercado.li', 'meli.la'],
   amazon: ['amazon.com.br', 'amazon.com', 'amzn.to'],
   shopee: ['shopee.com.br', 's.shopee.com.br', 'shope.ee'],
   magalu: ['magazineluiza.com.br', 'magalu.com'],
