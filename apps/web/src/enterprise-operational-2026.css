@@ -76,6 +76,7 @@ button.primary-action,
 .offer-actions > button:not(.ghost-button):not(.whatsapp-button),
 .affiliate-hub-actions > button:not(.secondary),
 .affiliate-hub-inline-form > button,
+.affiliate-hub-bulk-form > button,
 .affiliate-hub-manual-form > button,
 .enterprise-open-affiliates {
   border-color: var(--op-primary) !important;
@@ -86,6 +87,7 @@ button.primary-action,
 button.primary-action:hover:not(:disabled),
 .offer-actions > button:not(.ghost-button):not(.whatsapp-button):hover:not(:disabled),
 .affiliate-hub-actions > button:not(.secondary):hover:not(:disabled),
+.affiliate-hub-bulk-form > button:hover:not(:disabled),
 .enterprise-open-affiliates:hover:not(:disabled) {
   border-color: var(--op-primary-dark) !important;
   background: var(--op-primary-dark) !important;

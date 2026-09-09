@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { Marketplace, Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { isMarketplaceAffiliateUrl, resolveAffiliateLink } from './affiliate.js';
@@ -16,6 +16,7 @@ import { config } from './config.js';
 import { prisma } from './db.js';
 import { fetchExternal } from './http.js';
 import { toMarketplaceEnum, toMarketplaceName } from './marketplace.js';
+import { extractShopeeItemIdFromUrl, parseShopeeBulkLinks, type ShopeeBulkLinkEntry } from './shopeeBulkLinks.js';
 
 const marketplaceParamsSchema = z.object({
   marketplace: z.enum(['mercadolivre', 'shopee', 'amazon'])
@@ -64,6 +65,18 @@ const manualLinkSchema = z.object({
   affiliateUrl: z.string().trim().url().max(4096)
 }).strict();
 
+const shopeeBulkLinksSchema = z.object({
+  csv: z.string().trim().max(2_000_000).optional(),
+  links: z.array(z.string().trim().max(4096)).max(500).optional(),
+  entries: z.array(z.object({
+    offerId: z.string().trim().min(1).max(180).optional(),
+    externalId: z.string().trim().min(1).max(180).optional(),
+    productUrl: z.string().trim().url().max(4096).optional(),
+    affiliateUrl: z.string().trim().url().max(4096),
+    title: optionalText
+  }).strict()).max(500).optional()
+}).strict();
+
 const batchSchema = z.object({
   marketplace: z.enum(['mercadolivre', 'shopee', 'amazon']).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(30)
@@ -92,6 +105,49 @@ async function findOffer(rawId: string) {
   return prisma.offer.findUnique({
     where: { marketplace_externalId: { marketplace, externalId } }
   });
+}
+
+async function findShopeeOffer(entry: ShopeeBulkLinkEntry) {
+  if (entry.offerId) {
+    const offer = await prisma.offer.findUnique({ where: { id: entry.offerId } });
+    if (offer?.marketplace === Marketplace.SHOPEE) return offer;
+  }
+
+  const externalId = entry.externalId?.trim() || extractShopeeItemIdFromUrl(entry.productUrl);
+  if (externalId) {
+    const byExternalId = await prisma.offer.findUnique({
+      where: { marketplace_externalId: { marketplace: Marketplace.SHOPEE, externalId } }
+    });
+    if (byExternalId) return byExternalId;
+  }
+
+  if (entry.productUrl) {
+    const byProductUrl = await prisma.offer.findFirst({
+      where: { marketplace: Marketplace.SHOPEE, productUrl: entry.productUrl }
+    });
+    if (byProductUrl) return byProductUrl;
+  }
+
+  return null;
+}
+
+function mergeShopeeBulkEntries(body: z.infer<typeof shopeeBulkLinksSchema>) {
+  const fromCsv = body.csv ? parseShopeeBulkLinks(body.csv) : [];
+  const fromLinks = (body.links ?? [])
+    .map((line) => parseShopeeBulkLinks(line))
+    .flat();
+  const fromEntries = body.entries ?? [];
+  const seen = new Set<string>();
+
+  return [...fromCsv, ...fromLinks, ...fromEntries]
+    .filter((entry) => entry.affiliateUrl)
+    .filter((entry) => {
+      const key = `${entry.offerId ?? ''}|${entry.externalId ?? ''}|${entry.productUrl ?? ''}|${entry.affiliateUrl}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 500);
 }
 
 function schemaForMarketplace(marketplace: AffiliateMarketplace) {
@@ -395,6 +451,67 @@ export async function registerAffiliateConnectionRoutes(app: FastifyInstance) {
         affiliateUrl: saved.affiliateUrl,
         affiliateProvider: saved.affiliateProvider
       }
+    };
+  });
+
+  app.post('/affiliate/shopee/bulk-links', async (request) => {
+    await requireEditor(request);
+    const body = shopeeBulkLinksSchema.parse(request.body ?? {});
+    const entries = mergeShopeeBulkEntries(body);
+    if (entries.length === 0) {
+      throw Object.assign(new Error('Cole o CSV da Shopee ou uma lista com links de afiliado para importar.'), { statusCode: 400 });
+    }
+
+    const imported: Array<{
+      offerId: string;
+      externalId: string;
+      affiliateUrl: string;
+      title: string;
+    }> = [];
+    const unmatched: Array<ShopeeBulkLinkEntry & { reason: string }> = [];
+    const rejected: Array<ShopeeBulkLinkEntry & { reason: string }> = [];
+
+    for (const entry of entries) {
+      if (!isMarketplaceAffiliateUrl('shopee', entry.affiliateUrl)) {
+        rejected.push({ ...entry, reason: 'O link de afiliado não pertence aos domínios oficiais da Shopee.' });
+        continue;
+      }
+
+      const offer = await findShopeeOffer(entry);
+      if (!offer) {
+        unmatched.push({
+          ...entry,
+          reason: 'Não encontrei oferta Shopee correspondente. Inclua a coluna Product Link, Item ID ou ID da oferta do SaaS.'
+        });
+        continue;
+      }
+
+      const saved = await prisma.offer.update({
+        where: { id: offer.id },
+        data: {
+          affiliateEligible: true,
+          affiliateUrl: entry.affiliateUrl,
+          affiliateProvider: 'manual-portal-shopee-bulk',
+          affiliateVerifiedAt: new Date()
+        }
+      });
+
+      imported.push({
+        offerId: saved.id,
+        externalId: saved.externalId,
+        affiliateUrl: saved.affiliateUrl ?? entry.affiliateUrl,
+        title: saved.title
+      });
+    }
+
+    return {
+      requested: entries.length,
+      importedCount: imported.length,
+      unmatchedCount: unmatched.length,
+      rejectedCount: rejected.length,
+      imported,
+      unmatched,
+      rejected
     };
   });
 

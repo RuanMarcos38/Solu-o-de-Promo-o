@@ -80,6 +80,13 @@ export function AffiliateHub() {
   const [pendingMercadoLivreOffers, setPendingMercadoLivreOffers] = useState<PendingOffer[]>([]);
   const [manualOfferId, setManualOfferId] = useState('');
   const [manualAffiliateUrl, setManualAffiliateUrl] = useState('');
+  const [shopeeBulkText, setShopeeBulkText] = useState('');
+  const [shopeeBulkFileName, setShopeeBulkFileName] = useState('');
+  const [shopeeBulkResult, setShopeeBulkResult] = useState<{
+    importedCount?: number;
+    unmatchedCount?: number;
+    rejectedCount?: number;
+  } | null>(null);
 
   const byMarketplace = useMemo(() => Object.fromEntries(
     connections.map((item) => [item.marketplace, item])
@@ -259,6 +266,39 @@ export function AffiliateHub() {
     }
   }
 
+  async function importShopeeBulkLinks() {
+    if (!shopeeBulkText.trim()) {
+      setError('Cole o CSV da Shopee ou carregue o arquivo baixado em Obter Link.');
+      return;
+    }
+    setLoading(true);
+    setMessage('');
+    setError('');
+    setShopeeBulkResult(null);
+    try {
+      const data = await request('/affiliate/shopee/bulk-links', {
+        method: 'POST',
+        body: JSON.stringify({ csv: shopeeBulkText })
+      });
+      setShopeeBulkResult(data);
+      setMessage(`${data.importedCount ?? 0} link(s) Shopee importados. ${data.unmatchedCount ?? 0} sem oferta correspondente; ${data.rejectedCount ?? 0} rejeitado(s).`);
+      await loadConnections();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível importar os links da Shopee.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function readShopeeBulkFile(file: File | undefined) {
+    if (!file) return;
+    setShopeeBulkFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => setShopeeBulkText(String(reader.result ?? ''));
+    reader.onerror = () => setError('Não foi possível ler o arquivo CSV da Shopee.');
+    reader.readAsText(file);
+  }
+
   async function saveManualLink() {
     if (!manualOfferId || !manualAffiliateUrl.trim()) {
       setError('Escolha uma oferta do Mercado Livre e cole o link de afiliado gerado no portal oficial.');
@@ -419,6 +459,35 @@ export function AffiliateHub() {
                 </select>
                 <input type="number" min="1" max="50" value={batchLimit} onChange={(e) => setBatchLimit(e.target.value)} aria-label="Quantidade de ofertas" />
                 <button type="button" onClick={affiliateBatch} disabled={loading}>{loading ? 'Processando...' : 'Afiliar ofertas'}</button>
+              </div>
+            </section>
+
+            <section className="affiliate-hub-operations shopee-bulk">
+              <div className="affiliate-hub-operation-copy">
+                <span className="affiliate-hub-kicker">SHOPEE</span>
+                <h3>Importar links em massa</h3>
+                <p>Use o CSV baixado em Oferta de Produto → Obter Link. A coluna Offer Link será validada e vinculada às ofertas Shopee do painel.</p>
+              </div>
+              <div className="affiliate-hub-bulk-form">
+                <label className="affiliate-hub-file">
+                  <input
+                    type="file"
+                    accept=".csv,text/csv,text/plain"
+                    onChange={(event) => readShopeeBulkFile(event.target.files?.[0])}
+                  />
+                  <span>{shopeeBulkFileName || 'Carregar CSV da Shopee'}</span>
+                </label>
+                <textarea
+                  value={shopeeBulkText}
+                  onChange={(event) => setShopeeBulkText(event.target.value)}
+                  placeholder="Product Link,Offer Link&#10;https://shopee.com.br/produto-i.123.456,https://s.shopee.com.br/..."
+                />
+                <button type="button" onClick={importShopeeBulkLinks} disabled={loading}>
+                  {loading ? 'Importando...' : 'Importar links Shopee'}
+                </button>
+                {shopeeBulkResult ? (
+                  <small>{shopeeBulkResult.importedCount ?? 0} importados • {shopeeBulkResult.unmatchedCount ?? 0} sem correspondência • {shopeeBulkResult.rejectedCount ?? 0} rejeitados</small>
+                ) : null}
               </div>
             </section>
 

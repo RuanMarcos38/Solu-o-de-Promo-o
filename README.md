@@ -225,6 +225,16 @@ O serviço autorizado deve responder:
 
 Respostas sem elegibilidade, sem URL ou com host incompatível são rejeitadas.
 
+### Importação oficial de links Shopee
+
+Enquanto a conta Shopee não tiver `AppID` e `Secret` da Affiliate Open API, a operação pode usar o CSV gerado no Portal de Afiliados em **Oferta de Produto > Obter Link**:
+
+```http
+POST /affiliate/shopee/bulk-links
+```
+
+O endpoint aceita CSV ou linhas com `Product Link, Offer Link`, valida domínios oficiais da Shopee e vincula os links às ofertas já capturadas pelo SaaS.
+
 ## Painel administrativo
 
 O frontend permite:

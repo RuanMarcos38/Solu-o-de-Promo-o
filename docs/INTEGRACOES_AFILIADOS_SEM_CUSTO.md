@@ -102,6 +102,18 @@ SHOPEE_AFFILIATE_GRAPHQL_URL=https://open-api.affiliate.shopee.com.br/graphql
 
 O adaptador envia a assinatura SHA-256 e aceita como afiliado somente o `offerLink` compatível com a Shopee.
 
+### Link em massa pelo portal oficial
+
+Quando a Open API ainda não estiver liberada para a conta, a operação continua funcionando com links oficiais gerados no portal:
+
+1. abra **Oferta de Produto** no Portal de Afiliados Shopee;
+2. selecione os produtos que serão divulgados;
+3. clique em **Obter Link**;
+4. baixe o CSV;
+5. importe o arquivo na Central de Afiliados do SaaS.
+
+O endpoint `POST /affiliate/shopee/bulk-links` aceita CSV, valida a coluna `Offer Link` e vincula os links às ofertas Shopee pelo `Product Link`, `Item ID` ou ID interno da oferta.
+
 ### Operação sem Apify
 
 Para manter a solução sem custo de API terceirizada, deixe obrigatoriamente:

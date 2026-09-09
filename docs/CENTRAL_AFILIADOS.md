@@ -46,13 +46,23 @@ A oferta só fica liberada para WhatsApp depois que o link afiliado for validado
 
 ## Shopee
 
-Cadastre na Central de Afiliados:
+Modo automático por Open API:
 
 - App ID;
 - App Secret;
 - endpoint da Affiliate Open API.
 
 Com as credenciais válidas, o backend utiliza a API de afiliados para gerar um `shortLink` rastreável. Também aceita o `offerLink` retornado pela busca oficial de produtos.
+
+Quando a conta Shopee ainda não possui acesso à Open API, use o modo oficial de importação em massa:
+
+1. no Portal de Afiliados da Shopee, abra **Oferta de Produto**;
+2. selecione os produtos;
+3. clique em **Obter Link**;
+4. baixe o CSV;
+5. cole ou carregue o arquivo em **Central de Afiliados > Shopee > Importar links em massa**.
+
+A API `POST /affiliate/shopee/bulk-links` lê as colunas `Product Link`, `Item ID` e `Offer Link`, valida o domínio da Shopee e marca a oferta como `affiliateEligible=true`.
 
 Os domínios de links da Shopee aceitos incluem `shopee.com.br`, `s.shopee.com.br` e `shope.ee`.
 
