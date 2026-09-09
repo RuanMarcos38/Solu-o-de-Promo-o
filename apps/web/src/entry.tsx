@@ -14,6 +14,7 @@ import './marketplace-saas-2026.css';
 import './corporate-polish-2026.css';
 import './affiliate-hub.css';
 import './enterprise-operational-2026.css';
+import './product-system-2026.css';
 
 document.documentElement.lang = 'pt-BR';
 localStorage.setItem('promo_language', 'pt-BR');
